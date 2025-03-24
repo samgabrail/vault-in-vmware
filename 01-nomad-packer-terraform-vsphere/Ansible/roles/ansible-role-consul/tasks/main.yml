@@ -1,0 +1,119 @@
+---
+- name: install dependencies
+  apt:
+    name: [ "unzip" ]
+    state: present
+    cache_valid_time: 3600
+
+- name: download tarball {{ consul_version }}
+  get_url:
+    url: "{{ consul_dl_url }}"
+    dest: "{{ consul_tarball_dest }}"
+  register: consul_tar_download
+  when: ansible_architecture == "x86_64"
+
+- name: create consul directory
+  file:
+    path: "{{ consul_tarball_uncompress_dir }}"
+    state: directory
+  when: ansible_architecture == "x86_64"
+
+- name: does uncompressed tarball exist
+  stat:
+    path: "{{ consul_tarball_uncompressed_fullpath }}"
+  register: uncompressed_tarball
+  when: ansible_architecture == "x86_64"
+
+- name: unpack tarball {{ consul_version }}
+  unarchive:
+    src: "{{ consul_tarball_dest }}"
+    remote_src: yes
+    dest: /usr/local/bin
+  when: consul_tar_download.changed or uncompressed_tarball.stat.exists == false
+  register: consul_tar_unpack
+  when: ansible_architecture == "x86_64"
+  notify:
+  - restart consul
+
+- name: Create consul group
+  group:
+    name: consul
+    state: present
+    system: true
+
+- name: Create consul user
+  user:
+    name: consul
+    group: consul
+    shell: /bin/false
+    home: /etc/consul/
+    state: present
+
+- name: set cap_net_bind_service=+ep on /usr/local/bin/consul
+  capabilities:
+    path: /usr/local/bin/consul
+    capability: cap_net_bind_service=+ep
+    state: present
+  when: ansible_architecture == "x86_64"
+  ignore_errors: True
+
+- name: install service
+  template:
+    src: consul.service
+    dest: /etc/systemd/system/
+  notify:
+  - reload systemd
+
+- name: Add service user
+  user:
+    name: consul
+    group: consul
+
+- name: create consul data directory
+  file:
+    path: /opt/consul
+    state: directory
+    owner: consul
+    group: consul
+
+- name: create consul configuration directory
+  file:
+    path: /etc/consul.d
+    state: directory
+    owner: consul
+    group: consul
+
+- name: Get the IP address
+  debug:
+    msg: "{{ ansible_default_ipv4.address }}"
+
+- name: Count the number of hosts in the group
+  debug:
+    msg: "There are {{ groups['nomad_consul_servers']|length }} hosts in the nomad_consul_servers group"
+
+- name: configure consul servers
+  when: inventory_hostname in groups['nomad_consul_servers']
+  template:
+    src: consul_server.j2
+    dest: /etc/consul.d/consul.hcl
+    owner: consul
+    group: consul
+  vars:
+    mybindaddr: "{{ ansible_default_ipv4.address }}"
+    mybootstrapexpect: "{{ groups['nomad_consul_servers']|length }}"
+    myleaderaddress: "{{ hostvars[groups['nomad_consul_servers'][0]].ansible_default_ipv4.address }}"
+  notify:
+  - restart consul
+
+- name: configure consul clients
+  when: inventory_hostname in groups['nomad_consul_clients']
+  template:
+    src: consul_client.j2
+    dest: /etc/consul.d/consul.hcl
+    owner: consul
+    group: consul
+  vars:
+    mybindaddr: "{{ ansible_default_ipv4.address }}"
+    myleaderaddress: "{{ hostvars[groups['nomad_consul_servers'][0]].ansible_default_ipv4.address }}"
+  notify:
+  - restart consul

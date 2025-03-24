@@ -1,0 +1,16 @@
+#jinja2: trim_blocks:False
+# {{ ansible_managed }}
+data_dir         = "/opt/nomad/data"
+datacenter       = "dc1"
+bind_addr        = "0.0.0.0"
+
+client {
+  enabled = true
+  server_join {
+    retry_join = ["{{ myleaderaddress }}:4647"]
+  }
+  host_volume "mongodb" {
+    path      = "/opt/mongodb/data"
+    read_only = false
+  }
+}
