@@ -1,0 +1,6 @@
+# consul_version: 1.10.1
+consul_dl_url: https://releases.hashicorp.com/consul/{{ consul_version }}/consul_{{ consul_version }}_linux_amd64.zip
+consul_tarball_uncompressed_name: consul
+consul_tarball_dest: "/root/consul_{{ consul_version }}_linux_amd64.zip"
+consul_tarball_uncompress_dir: "/opt/consul-{{ consul_version }}"
+consul_tarball_uncompressed_fullpath: "{{ consul_tarball_uncompress_dir }}/{{ consul_tarball_uncompressed_name }}"

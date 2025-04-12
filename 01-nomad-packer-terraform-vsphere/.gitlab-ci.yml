@@ -1,0 +1,82 @@
+# This pipeline is using the GitLab CI/CD to provision servers using Terraform and then install Consul and Nomad on the provisioned servers using Ansible. The pipeline is defined with two stages: provision and install. The pipeline uses environment variables to define the server and client names, IPs and versions of Consul, Nomad and CNI. The pipeline starts by provisioning servers using Terraform and then installing Consul and Nomad on those servers using Ansible. At the end of the pipeline, the variables are passed to the next job, the inventory file is updated accordingly and the playbook.yml is run.
+
+variables: 
+  # Use the empty 4 variables below to destroy the infrastructure.
+  SERVER_NAMES: ""
+  CLIENT_NAMES: ""
+  SERVER_IPS: ""
+  CLIENT_IPS: ""
+  # SERVER_NAMES: "nomad-consul-server-1"
+  # CLIENT_NAMES: "nomad-consul-client-1"
+  # SERVER_IPS: "192.168.1.93"
+  # CLIENT_IPS: "192.168.1.96"
+  # SERVER_NAMES: "nomad-consul-server-1 nomad-consul-server-2 nomad-consul-server-3"
+  # CLIENT_NAMES: "nomad-consul-client-1 nomad-consul-client-2 nomad-consul-client-3"
+  # SERVER_IPS: "192.168.1.93 192.168.1.94 192.168.1.95"
+  # CLIENT_IPS: "192.168.1.96 192.168.1.97 192.168.1.99"
+  CONSUL_VERSION: "1.14.3"
+  NOMAD_VERSION: "1.4.3"
+  CNI_VERSION: "1.1.1"
+
+stages:
+  - provision
+  - install
+
+terraform-provision-servers:
+  stage: provision
+  script:
+    # Store the current user in the USER variable
+    - export USER=$(whoami)
+    # Create a build.env file to store the USER variable
+    - echo USER=${USER} > build.env
+    # Create the .terraform.d directory in the user's home directory
+    - mkdir -p /home/${USER}/.terraform.d
+    # Create a credentials.tfrc.json file to store the TFC_TOKEN in the .terraform.d directory
+    - |-
+      cat > /home/${USER}/.terraform.d/credentials.tfrc.json <<-EOF
+      {
+        "credentials": {
+          "app.terraform.io": {
+            "token": "${TFC_TOKEN}"
+          }
+        }
+      }
+      EOF
+    # Change to the Terraform directory
+    - cd Terraform
+    # Run createautovars.sh script with the SERVER_NAMES, CLIENT_NAMES, SERVER_IPS, and CLIENT_IPS variables
+    - ./createautovars.sh "${SERVER_NAMES}" "${CLIENT_NAMES}" "${SERVER_IPS}" "${CLIENT_IPS}"
+    # Initialize terraform with the TFC_TOKEN
+    - terraform init -backend-config="token=${TFC_TOKEN}"
+    # Format the terraform files
+    - terraform fmt
+    # Validate the terraform files
+    - terraform validate
+    # Apply the terraform changes with auto approve option
+    - terraform apply --auto-approve
+  # Use artifacts.reports.dotenv to pass variables in build.env from this job to the next
+  artifacts:
+    reports:
+      dotenv: build.env
+  tags: [inK8s]
+
+ansible-install-consul-nomad:
+  stage: install
+  script:
+    # Create the .ssh directory in the user's home directory
+    - mkdir -p /home/${USER}/.ssh
+    # Copy the id_rsa file to the .ssh directory
+    - cp ${id_rsa} /home/${USER}/.ssh
+    # Change the permissions of the id_rsa file
+    - sudo chmod 400 /home/${USER}/.ssh/id_rsa
+    # Change to the Ansible directory
+    - cd Ansible
+    # Run the update_inventory.sh script with the SERVER_NAMES, CLIENT_NAMES, SERVER_IPS, and CLIENT_IPS variables
+    - ./update_inventory.sh "${SERVER_NAMES}" "${CLIENT_NAMES}" "${SERVER_IPS}" "${CLIENT_IPS}"
+    # Print the inventory file to the console
+    - cat inventory
+    # Run ansible-playbook using the inventory file and the playbook.yml file passing the versions of Consul, Nomad, and CNI as variables, with their values being taken from the environment variables CONSUL_VERSION, NOMAD_VERSION, and CNI_VERSION respectively
+    - ansible-playbook -i inventory --extra-vars "consul_version=${CONSUL_VERSION} nomad_version=${NOMAD_VERSION} cni_version=${CNI_VERSION}" playbook.yml
+  needs:
+    - job: terraform-provision-servers
+  tags: [inK8s]

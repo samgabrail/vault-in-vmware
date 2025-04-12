@@ -1,0 +1,21 @@
+datacenter  = "dc1"
+data_dir    = "/opt/consul"
+client_addr = "0.0.0.0"
+bind_addr   = "{{ mybindaddr }}"
+server      = true
+
+ui_config {
+    enabled = true
+}
+
+bootstrap_expect = {{ mybootstrapexpect }}
+
+ports {
+  grpc = 8502
+}
+
+connect {
+  enabled = true
+}
+
+retry_join = ["{{ myleaderaddress }}"]
