@@ -13,7 +13,7 @@ This guide provides instructions for setting up Jenkins to authenticate with Has
 
 ## Overview
 
-AppRole is designed for machine-to-machine authentication and is ideal for Jenkins integration. This guide demonstrates how to set up separate AppRoles for different applications (dbit and healthcare) using the Jenkins Vault Plugin.
+AppRole is designed for machine-to-machine authentication and is ideal for Jenkins integration. This guide demonstrates how to set up separate AppRoles for different applications (app1 and app2) using the Jenkins Vault Plugin.
 
 ## Setting Up Multi-Application Access
 
@@ -28,50 +28,50 @@ vault auth enable approle
 
 Create separate policies for each application to enforce least privilege:
 
-**dbit.hcl**:
+**app1.hcl**:
 ```hcl
-# Access to dbit secrets (KV v2)
-path "secrets/data/dbit" {
+# Access to app1 secrets (KV v2)
+path "secrets/data/app1" {
   capabilities = ["read"]
 }
 
-path "secrets/metadata/dbit" {
+path "secrets/metadata/app1" {
   capabilities = ["read", "list"]
 }
 ```
 
-**healthcare.hcl**:
+**app2.hcl**:
 ```hcl
-# Access to healthcare secrets (KV v2)
-path "secrets/data/healthcare" {
+# Access to app2 secrets (KV v2)
+path "secrets/data/app2" {
   capabilities = ["read"]
 }
 
-path "secrets/metadata/healthcare" {
+path "secrets/metadata/app2" {
   capabilities = ["read", "list"]
 }
 ```
 
 Register the policies:
 ```bash
-vault policy write dbit dbit.hcl
-vault policy write healthcare healthcare.hcl
+vault policy write app1 app1.hcl
+vault policy write app2 app2.hcl
 ```
 
 ### 3. Create AppRoles for Each Application
 
 ```bash
-# Create dbit AppRole
-vault write auth/approle/role/dbit-approle \
-    token_policies="dbit" \
+# Create app1 AppRole
+vault write auth/approle/role/app1-approle \
+    token_policies="app1" \
     token_ttl=1h \
     token_max_ttl=4h \
     secret_id_ttl=720h \
     secret_id_num_uses=0
 
-# Create healthcare AppRole
-vault write auth/approle/role/healthcare-approle \
-    token_policies="healthcare" \
+# Create app2 AppRole
+vault write auth/approle/role/app2-approle \
+    token_policies="app2" \
     token_ttl=1h \
     token_max_ttl=4h \
     secret_id_ttl=720h \
@@ -81,17 +81,17 @@ vault write auth/approle/role/healthcare-approle \
 ### 4. Get RoleIDs and Generate SecretIDs
 
 ```bash
-# Get dbit RoleID
-vault read auth/approle/role/dbit-approle/role-id
+# Get app1 RoleID
+vault read auth/approle/role/app1-approle/role-id
 
-# Get healthcare RoleID
-vault read auth/approle/role/healthcare-approle/role-id
+# Get app2 RoleID
+vault read auth/approle/role/app2-approle/role-id
 
-# Generate dbit SecretID
-vault write -f auth/approle/role/dbit-approle/secret-id
+# Generate app1 SecretID
+vault write -f auth/approle/role/app1-approle/secret-id
 
-# Generate healthcare SecretID
-vault write -f auth/approle/role/healthcare-approle/secret-id
+# Generate app2 SecretID
+vault write -f auth/approle/role/app2-approle/secret-id
 ```
 
 ## Configuring Jenkins Vault Plugin
@@ -114,47 +114,47 @@ vault write -f auth/approle/role/healthcare-approle/secret-id
 
 ### 3. Add Vault Credentials to Jenkins
 
-1. Add a credential for dbit:
+1. Add a credential for app1:
    - Go to **Jenkins Dashboard > Manage Jenkins > Credentials > System > Global credentials**
    - Click **Add Credentials**
    - Select **Vault App Role Credential** from the dropdown
    - Enter:
-     - **ID**: `dbit-approle-credentials`
-     - **Description**: "Vault AppRole for dbit application"
-     - **Role ID**: Enter the dbit Role ID
-     - **Secret ID**: Enter the dbit Secret ID
+     - **ID**: `app1-approle-credentials`
+     - **Description**: "Vault AppRole for app1 application"
+     - **Role ID**: Enter the app1 Role ID
+     - **Secret ID**: Enter the app1 Secret ID
    - Click **OK**
 
-2. Add a credential for healthcare:
+2. Add a credential for app2:
    - Go to **Jenkins Dashboard > Manage Jenkins > Credentials > System > Global credentials**
    - Click **Add Credentials**
    - Select **Vault App Role Credential** from the dropdown
    - Enter:
-     - **ID**: `healthcare-approle-credentials`
-     - **Description**: "Vault AppRole for healthcare application"
-     - **Role ID**: Enter the healthcare Role ID
-     - **Secret ID**: Enter the healthcare Secret ID
+     - **ID**: `app2-approle-credentials`
+     - **Description**: "Vault AppRole for app2 application"
+     - **Role ID**: Enter the app2 Role ID
+     - **Secret ID**: Enter the app2 Secret ID
    - Click **OK**
 
 ## Using Vault Secrets in Jenkinsfiles
 
-### Example for dbit Application
+### Example for app1 Application
 
 ```groovy
 pipeline {
-    agent { label 'aws-poc-build' }
+    agent { label 'jenkins-agent' }
     options { timestamps() }
     
     stages {
-        stage('Fetch dbit Secrets') {
+        stage('Fetch app1 Secrets') {
             steps {
                 withVault(
                     configuration: [
-                        vaultCredentialId: 'dbit-approle-credentials',
+                        vaultCredentialId: 'app1-approle-credentials',
                         engineVersion: 2 // This specifies KV v2
                     ],
                     vaultSecrets: [
-                        [path: 'secrets/data/dbit', secretValues: [
+                        [path: 'secrets/data/app1', secretValues: [
                             [envVar: 'DB_PASSWORD', vaultKey: 'password'],
                             [envVar: 'API_KEY', vaultKey: 'api_key']
                         ]]
@@ -170,31 +170,31 @@ pipeline {
 }
 ```
 
-### Example for Healthcare Application
+### Example for app2 Application
 
 ```groovy
 pipeline {
-    agent { label 'aws-poc-build' }
+    agent { label 'jenkins-agent' }
     options { timestamps() }
     
     stages {
-        stage('Fetch Healthcare Secrets') {
+        stage('Fetch app2 Secrets') {
             steps {
                 withVault(
                     configuration: [
-                        vaultCredentialId: 'healthcare-approle-credentials',
+                        vaultCredentialId: 'app2-approle-credentials',
                         engineVersion: 2
                     ],
                     vaultSecrets: [
-                        [path: 'secrets/data/healthcare', secretValues: [
+                        [path: 'secrets/data/app2', secretValues: [
                             [envVar: 'API_ENDPOINT', vaultKey: 'api_endpoint'],
                             [envVar: 'API_KEY', vaultKey: 'api_key'],
                             [envVar: 'DB_PASSWORD', vaultKey: 'db_password']
                         ]]
                     ]
                 ) {
-                    // Use healthcare secrets securely
-                    sh 'echo "Connecting to healthcare API..."'
+                    // Use app2 secrets securely
+                    sh 'echo "Connecting to app2 API..."'
                     sh 'echo "API endpoint: $API_ENDPOINT"'
                     // Never echo the actual secret values
                 }
@@ -210,7 +210,7 @@ You can also access secrets from multiple applications in a single pipeline:
 
 ```groovy
 pipeline {
-    agent { label 'aws-poc-build' }
+    agent { label 'jenkins-agent' }
     options { timestamps() }
     
     stages {
@@ -222,17 +222,17 @@ pipeline {
                     ],
                     vaultSecrets: [
                         [
-                            path: 'secrets/data/dbit',
-                            credentialsId: 'dbit-approle-credentials', 
+                            path: 'secrets/data/app1',
+                            credentialsId: 'app1-approle-credentials', 
                             secretValues: [
-                                [envVar: 'DBIT_DB_PASSWORD', vaultKey: 'password']
+                                [envVar: 'APP1_DB_PASSWORD', vaultKey: 'password']
                             ]
                         ],
                         [
-                            path: 'secrets/data/healthcare',
-                            credentialsId: 'healthcare-approle-credentials', 
+                            path: 'secrets/data/app2',
+                            credentialsId: 'app2-approle-credentials', 
                             secretValues: [
-                                [envVar: 'HC_API_KEY', vaultKey: 'api_key']
+                                [envVar: 'APP2_API_KEY', vaultKey: 'api_key']
                             ]
                         ]
                     ]
@@ -418,16 +418,20 @@ vault write auth/approle/role/content-management-approle \
    - Use Vault's token to manage SecretIDs and Jenkins API to update credentials
    - Schedule different rotation schedules based on security tiers
 
-2. **Monitoring and Alerting**:
+2. **Jenkins Credential Provider Plugin**:
+   - Consider developing a custom credential provider for Jenkins that fetches credentials dynamically
+   - This eliminates the need to store SecretIDs in Jenkins at all
+
+3. **Monitoring and Alerting**:
    - Track SecretID expiration dates across all applications
    - Set up alerts for upcoming expirations
    - Monitor rotation failures and implement automated retries
 
-3. **Overlapping Validity Periods**:
+4. **Overlapping Validity Periods**:
    - When rotating SecretIDs, implement a grace period where both old and new are valid
    - This prevents disruption if some components still use the old SecretID
 
-4. **Documentation and Audit**:
+5. **Documentation and Audit**:
    - Maintain clear documentation of rotation policies for each application tier
    - Keep audit logs of all rotation activities
    - Regularly review rotation policies as part of security governance
