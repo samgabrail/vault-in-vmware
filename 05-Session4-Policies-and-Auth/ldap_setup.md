@@ -36,7 +36,7 @@ vault write auth/ldap/config \
 ```bash
 # For administrators group
 # we already created this
-vault policy write administrators admin_policy.hcl
+vault policy write admin admin_policy.hcl
 
 # For regular users group
 vault policy write users user_policy.hcl
@@ -46,7 +46,7 @@ vault policy write users user_policy.hcl
 ```bash
 # Map administrators group
 vault write auth/ldap/groups/DEV.HashiCorp.Administrators \
-    policies=administrators
+    policies=admin
 
 # Map regular users group
 vault write auth/ldap/groups/DEV.HashiCorp.Users \
