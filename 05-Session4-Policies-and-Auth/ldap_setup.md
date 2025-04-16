@@ -1,4 +1,7 @@
-# Setting up LDAP Authentication with Active Directory
+# Setting up LDAP Authentication with Active Directory.
+
+Main documentation:
+https://developer.hashicorp.com/vault/docs/auth/ldap
 
 ## Prerequisites
 - Vault server is running and unsealed
@@ -32,6 +35,7 @@ vault write auth/ldap/config \
 3. Create policies for your AD groups (using existing admin policy as an example):
 ```bash
 # For administrators group
+# we already created this
 vault policy write administrators admin_policy.hcl
 
 # For regular users group
@@ -52,6 +56,14 @@ vault write auth/ldap/groups/DEV.HashiCorp.Users \
 5. Test the LDAP configuration:
 ```bash
 vault login -method=ldap username=<ad-username>
+```
+
+6. Rotate root credentials 
+
+The root bindpass can be rotated to a Vault-generated value that is not accessible by the operator. This will ensure that only Vault is able to access the "root" user that Vault uses to manipulate credentials.
+
+```bash
+vault write -f auth/ldap/rotate-root
 ```
 
 ## Configuration Details
