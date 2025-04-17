@@ -62,21 +62,59 @@ vault policy write app2 app2.hcl
 
 ```bash
 # Create app1 AppRole
-vault write auth/approle/role/app1-approle \
+vault write auth/approle/role/app1 \
     token_policies="app1" \
     token_ttl=1h \
     token_max_ttl=4h \
     secret_id_ttl=720h \
+    secret_id_bound_cidrs="10.0.0.0/24,192.168.1.0/24" \
+    token_bound_cidrs="10.0.0.0/24" \
     secret_id_num_uses=0
 
 # Create app2 AppRole
-vault write auth/approle/role/app2-approle \
+vault write auth/approle/role/app2 \
     token_policies="app2" \
     token_ttl=1h \
     token_max_ttl=4h \
     secret_id_ttl=720h \
+    secret_id_bound_cidrs="10.0.0.0/24,192.168.1.0/24" \
+    token_bound_cidrs="10.0.0.0/24" \
     secret_id_num_uses=0
 ```
+
+
+#### CIDR Block Restrictions in Vault AppRole
+
+There are two ways to implement CIDR block restrictions in Vault's AppRole authentication method:
+
+##### 1. Secret ID CIDR Binding
+```
+secret_id_bound_cidrs (array: []) - Comma-separated string or list of CIDR blocks; if set, specifies blocks of IP addresses which can perform the login operation.
+```
+
+This restricts **which IP addresses can use the SecretID to log in**. This is a restriction on the authentication process itself.
+
+##### 2. Token CIDR Binding
+```
+token_bound_cidrs (array: [] or comma-delimited string: "") - List of CIDR blocks; if set, specifies blocks of IP addresses which can authenticate successfully, and ties the resulting token to these blocks as well.
+```
+
+This restricts **where the resulting token can be used** after successful authentication. The token will only be usable from the specified IP ranges.
+
+##### Example Configuration
+
+```shell
+# Create an AppRole with CIDR restrictions
+vault write auth/approle/role/restricted-role \
+    secret_id_bound_cidrs="10.0.0.0/24,192.168.1.0/24" \
+    token_bound_cidrs="10.0.0.0/24" \
+    token_policies="app-policy" \
+    bind_secret_id=true
+```
+
+This creates an AppRole where:
+- The SecretID can only be used to log in from the 10.0.0.0/24 or 192.168.1.0/24 networks
+- Once authenticated, the resulting token can only be used from the 10.0.0.0/24 network
 
 ### 4. Get RoleIDs and Generate SecretIDs
 
@@ -93,6 +131,8 @@ vault write -f auth/approle/role/app1-approle/secret-id
 # Generate app2 SecretID
 vault write -f auth/approle/role/app2-approle/secret-id
 ```
+
+Every AppRole has only 1 role-id but can generate multiple secret-ids.
 
 ## Configuring Jenkins Vault Plugin
 
