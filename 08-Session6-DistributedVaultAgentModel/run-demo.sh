@@ -19,9 +19,12 @@ APP_DATA_DIR_FORMAT="$VAULT_DATA_DIR/%s"
 ROLE_ID_FILE_FORMAT="$VAULT_DATA_DIR/%s/role-id"
 WRAPPED_SECRET_ID_FILE_FORMAT="$VAULT_DATA_DIR/%s/wrapped-secret-id"
 TOKEN_SINK_FORMAT="$VAULT_DATA_DIR/%s/vault-token"
+VAULTAGENT_USER="vaultagent"
+APP_USER="appuser"
 
 # List of applications to set up - MODIFY THIS LIST for your environment
 declare -a APP_NAMES=("webapp" "database")
+# Use higher port numbers that don't conflict with the Vault server
 LISTENER_PORTS=(8100 8200) # Corresponding local ports for Vault Agent API endpoints
 
 echo -e "${BLUE}=== Vault Agent Per-App Isolation Demo ===${NC}"
@@ -46,6 +49,13 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+echo -e "\n${GREEN}Creating dedicated users for Vault Agents and applications...${NC}"
+# Create vaultagent user for running Vault Agents
+id -u $VAULTAGENT_USER &>/dev/null || useradd -r -s /bin/false $VAULTAGENT_USER
+
+# Create appuser for running applications (optional, in practice you'd use existing app users)
+id -u $APP_USER &>/dev/null || useradd -r -s /bin/bash $APP_USER
+
 echo -e "\n${GREEN}Starting Vault in dev mode...${NC}"
 echo "In a separate terminal window, please run:"
 echo -e "${BLUE}vault server -dev -dev-root-token-id=\"root\"${NC}"
@@ -67,13 +77,15 @@ echo -e "\n${GREEN}Vault server is running.${NC}"
 # Create the data directory
 echo -e "\n${GREEN}Creating Vault Agent data directory...${NC}"
 mkdir -p $VAULT_DATA_DIR
-chmod 700 $VAULT_DATA_DIR
+chmod 750 $VAULT_DATA_DIR
+chown root:$VAULTAGENT_USER $VAULT_DATA_DIR
 
 echo -e "\n${GREEN}Creating application directories...${NC}"
 # Create directories for each app
 for app_name in "${APP_NAMES[@]}"; do
     mkdir -p $(printf $APP_DATA_DIR_FORMAT $app_name)
-    chmod 700 $(printf $APP_DATA_DIR_FORMAT $app_name)
+    chmod 750 $(printf $APP_DATA_DIR_FORMAT $app_name)
+    chown $VAULTAGENT_USER:$VAULTAGENT_USER $(printf $APP_DATA_DIR_FORMAT $app_name)
 done
 
 echo -e "\n${GREEN}Creating policies...${NC}"
@@ -140,8 +152,9 @@ echo -e "\n${GREEN}Creating restart role credentials...${NC}"
 vault read -format=json auth/approle/role/restart-role/role-id | jq -r '.data.role_id' > $VAULT_DATA_DIR/restart-role-id
 vault write -f -format=json auth/approle/role/restart-role/secret-id | jq -r '.data.secret_id' > $VAULT_DATA_DIR/restart-secret-id
 
-# Set proper permissions
+# Set proper permissions for restart credentials
 chmod 600 $VAULT_DATA_DIR/restart-role-id $VAULT_DATA_DIR/restart-secret-id
+chown $VAULTAGENT_USER:$VAULTAGENT_USER $VAULT_DATA_DIR/restart-role-id $VAULT_DATA_DIR/restart-secret-id
 
 echo -e "\n${GREEN}Creating the vault agent startup scripts...${NC}"
 # Create a startup script for each app
@@ -182,6 +195,7 @@ exec vault agent -config=$VAULT_DATA_DIR/${app_name}-agent.hcl
 EOF
 
     chmod 700 $VAULT_DATA_DIR/${app_name}-agent-start.sh
+    chown $VAULTAGENT_USER:$VAULTAGENT_USER $VAULT_DATA_DIR/${app_name}-agent-start.sh
 done
 
 echo -e "\n${GREEN}Creating Vault Agent configurations...${NC}"
@@ -213,6 +227,9 @@ auto_auth {
     config = {
       path = "$(printf $TOKEN_SINK_FORMAT $app_name)"
       mode = 0440
+      # Allow the app users to read the token
+      user = "$VAULTAGENT_USER"
+      group = "$APP_USER"
     }
   }
 }
@@ -226,6 +243,9 @@ cache {
   use_auto_auth_token = true
 }
 EOF
+
+    chmod 640 $VAULT_DATA_DIR/${app_name}-agent.hcl
+    chown $VAULTAGENT_USER:$VAULTAGENT_USER $VAULT_DATA_DIR/${app_name}-agent.hcl
 done
 
 echo -e "\n${GREEN}Creating systemd service files...${NC}"
@@ -241,8 +261,8 @@ Type=simple
 ExecStart=$VAULT_DATA_DIR/${app_name}-agent-start.sh
 Restart=on-failure
 RestartSec=10
-User=root
-Group=root
+User=$VAULTAGENT_USER
+Group=$VAULTAGENT_USER
 
 [Install]
 WantedBy=multi-user.target
@@ -254,6 +274,16 @@ echo -e "\n${GREEN}Creating test applications...${NC}"
 for i in "${!APP_NAMES[@]}"; do
     app_name=${APP_NAMES[$i]}
     port=${LISTENER_PORTS[$i]}
+    other_apps=""
+    
+    # Properly create the array of other apps for testing
+    for other_app in "${APP_NAMES[@]}"; do
+        if [ "$other_app" != "$app_name" ]; then
+            other_apps+="\"$other_app\", "
+        fi
+    done
+    # Remove trailing comma and space
+    other_apps=${other_apps%, }
     
     cat > $VAULT_DATA_DIR/${app_name}-script.py << EOF
 #!/usr/bin/env python3
@@ -308,20 +338,21 @@ else:
     print(f"  Response: {response.text}")
 
 # Try to access secrets from other apps to test isolation
-for other_app in ${APP_NAMES[@]/#/\'}${APP_NAMES[@]/%/\'} :
-    if other_app != '${app_name}':
-        print(f"${app_name} attempting to access {other_app} secrets (should fail):")
-        response = requests.get(
-            f'{VAULT_ADDR}/v1/secret/data/{other_app}/config',
-            headers=headers
-        )
-        if response.status_code != 200:
-            print(f"  Access correctly denied: {response.status_code}")
-        else:
-            print(f"  ERROR: Access incorrectly granted to {other_app} secrets!")
+other_apps = [${other_apps}]
+for other_app in other_apps:
+    print(f"${app_name} attempting to access {other_app} secrets (should fail):")
+    response = requests.get(
+        f'{VAULT_ADDR}/v1/secret/data/{other_app}/config',
+        headers=headers
+    )
+    if response.status_code != 200:
+        print(f"  Access correctly denied: {response.status_code}")
+    else:
+        print(f"  ERROR: Access incorrectly granted to {other_app} secrets!")
 EOF
 
-    chmod +x $VAULT_DATA_DIR/${app_name}-script.py
+    chmod 750 $VAULT_DATA_DIR/${app_name}-script.py
+    chown $APP_USER:$APP_USER $VAULT_DATA_DIR/${app_name}-script.py
 done
 
 echo -e "\n${GREEN}Reloading systemd and enabling services...${NC}"
@@ -347,6 +378,9 @@ for app_name in "${APP_NAMES[@]}"; do
         echo -e "${RED}Error: Token for ${app_name} was not created.${NC}"
         echo "Check the service logs with: journalctl -u vault-agent-${app_name}.service"
         tokens_created=false
+    else
+        # Verify permissions on token files
+        ls -l $(printf $TOKEN_SINK_FORMAT $app_name)
     fi
 done
 
@@ -359,17 +393,19 @@ fi
 
 echo -e "\n${GREEN}Testing application access with tokens...${NC}"
 for app_name in "${APP_NAMES[@]}"; do
-    echo -e "\n${BLUE}Running ${app_name} script:${NC}"
-    python3 $VAULT_DATA_DIR/${app_name}-script.py
+    echo -e "\n${BLUE}Running ${app_name} script as $APP_USER:${NC}"
+    sudo -u $APP_USER python3 $VAULT_DATA_DIR/${app_name}-script.py
 done
 
 echo -e "\n${GREEN}Demonstration completed!${NC}"
 echo ""
 echo "The system is now set up with:"
-echo "1. A restart AppRole with tightly scoped permissions to create wrapped secret IDs"
-echo "2. Vault Agent startup scripts that dynamically fetch role IDs and wrapped secret IDs"
-echo "3. Systemd services for each Vault Agent with proper restart policies"
-echo "4. Complete isolation between applications with cached API endpoints"
+echo "1. A dedicated '$VAULTAGENT_USER' user for running Vault Agents"
+echo "2. A dedicated '$APP_USER' user for applications accessing tokens"
+echo "3. Proper file permissions ensuring separation of concerns"
+echo "4. A restart AppRole with tightly scoped permissions"
+echo "5. Systemd services running as non-root user"
+echo "6. Complete isolation between applications with cached API endpoints"
 echo ""
 echo "The following applications were configured:"
 for i in "${!APP_NAMES[@]}"; do
@@ -383,6 +419,8 @@ echo "  sudo systemctl disable $(printf "vault-agent-%s " "${APP_NAMES[@]}")"
 echo "  sudo rm -f $(printf "/etc/systemd/system/vault-agent-%s.service " "${APP_NAMES[@]}")"
 echo "  sudo rm -rf $VAULT_DATA_DIR"
 echo "  sudo systemctl daemon-reload"
+echo "  sudo userdel $VAULTAGENT_USER"
+echo "  sudo userdel $APP_USER"
 echo ""
 echo -e "${BLUE}=== Demo Complete ===${NC}"
 echo "You can continue to experiment with the setup or stop the Vault dev server when you're done." 
