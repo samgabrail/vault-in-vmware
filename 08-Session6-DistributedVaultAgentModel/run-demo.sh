@@ -91,8 +91,10 @@ echo -e "\n${GREEN}Creating application directories...${NC}"
 # Create directories for each app
 for app_name in "${APP_NAMES[@]}"; do
     mkdir -p $(printf $APP_DATA_DIR_FORMAT $app_name)
+    # Allow appuser to traverse into these directories
     chmod 750 $(printf $APP_DATA_DIR_FORMAT $app_name)
-    chown $VAULTAGENT_USER:$VAULTAGENT_USER $(printf $APP_DATA_DIR_FORMAT $app_name)
+    # Set group to appuser so they can access token files
+    chown $VAULTAGENT_USER:$APP_USER $(printf $APP_DATA_DIR_FORMAT $app_name)
 done
 
 echo -e "\n${GREEN}Creating policies...${NC}"
@@ -396,8 +398,8 @@ for app_name in "${APP_NAMES[@]}"; do
         # Verify permissions on token files
         ls -l $token_path
         
-        # Fix token file permissions if needed
-        if ! getfacl $token_path 2>/dev/null | grep -q "$APP_USER:r"; then
+        # Fix token file permissions if needed - don't change ownership if already set
+        if [ "$(stat -c '%G' $token_path)" != "$APP_USER" ]; then
             echo "Fixing permissions on token file for $app_name"
             chmod 440 $token_path
             chown $VAULTAGENT_USER:$APP_USER $token_path
