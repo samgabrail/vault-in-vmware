@@ -19,7 +19,7 @@ VAULT_DATA_DIR="/etc/vault-agents"
 APP_DATA_DIR_FORMAT="$VAULT_DATA_DIR/%s"
 ROLE_ID_FILE_FORMAT="$VAULT_DATA_DIR/%s/role-id"
 WRAPPED_SECRET_ID_FILE_FORMAT="$VAULT_DATA_DIR/%s/wrapped-secret-id"
-TOKEN_SINK_FORMAT="$VAULT_DATA_DIR/%s/vault-token"
+TOKEN_SINK_FORMAT="/home/%s_user/.vault-token/vault-token"
 SCRIPT_PATH_FORMAT="$VAULT_DATA_DIR/%s-script.py"
 VAULTAGENT_USER="vaultagent"
 
@@ -66,6 +66,12 @@ for app_name in "${APP_NAMES[@]}"; do
     mkdir -p $app_scripts_dir
     chown $app_user:$app_user $app_scripts_dir
     chmod 755 $app_scripts_dir
+    
+    # Create token directory in user's home
+    token_dir="/home/$app_user/.vault-token"
+    mkdir -p $token_dir
+    chown $VAULTAGENT_USER:$app_user $token_dir
+    chmod 750 $token_dir
     
     echo "Created user $app_user with home directory /home/$app_user"
 done
