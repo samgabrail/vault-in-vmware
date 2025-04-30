@@ -251,9 +251,6 @@ auto_auth {
     config = {
       path = "$(printf $TOKEN_SINK_FORMAT $app_name)"
       mode = 0440
-      # Allow the app users to read the token
-      user = "$VAULTAGENT_USER"
-      group = "$app_user"
     }
   }
 }
