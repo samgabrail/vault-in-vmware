@@ -351,7 +351,9 @@ for other_app in other_apps:
         print(f"  ERROR: Access incorrectly granted to {other_app} secrets!")
 EOF
 
-    chmod 750 $VAULT_DATA_DIR/${app_name}-script.py
+    # Move script files to root of vault agents directory for easier access
+    cp $VAULT_DATA_DIR/${app_name}-script.py $VAULT_DATA_DIR/
+    chmod 755 $VAULT_DATA_DIR/${app_name}-script.py
     chown $APP_USER:$APP_USER $VAULT_DATA_DIR/${app_name}-script.py
 done
 
