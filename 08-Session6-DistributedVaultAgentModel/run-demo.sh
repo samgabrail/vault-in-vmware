@@ -19,8 +19,10 @@ APP_DATA_DIR_FORMAT="$VAULT_DATA_DIR/%s"
 ROLE_ID_FILE_FORMAT="$VAULT_DATA_DIR/%s/role-id"
 WRAPPED_SECRET_ID_FILE_FORMAT="$VAULT_DATA_DIR/%s/wrapped-secret-id"
 TOKEN_SINK_FORMAT="$VAULT_DATA_DIR/%s/vault-token"
+SCRIPT_PATH_FORMAT="$VAULT_DATA_DIR/%s-script.py"
 VAULTAGENT_USER="vaultagent"
 APP_USER="appuser"
+APP_SCRIPTS_DIR="/home/$APP_USER/vault-scripts"
 
 # List of applications to set up - MODIFY THIS LIST for your environment
 declare -a APP_NAMES=("webapp" "database")
@@ -56,6 +58,11 @@ id -u $VAULTAGENT_USER &>/dev/null || useradd -r -s /bin/false $VAULTAGENT_USER
 # Create appuser for running applications (optional, in practice you'd use existing app users)
 id -u $APP_USER &>/dev/null || useradd -r -s /bin/bash $APP_USER
 
+# Create scripts directory for the app user
+mkdir -p $APP_SCRIPTS_DIR
+chown $APP_USER:$APP_USER $APP_SCRIPTS_DIR
+chmod 755 $APP_SCRIPTS_DIR
+
 echo -e "\n${GREEN}Starting Vault in dev mode...${NC}"
 echo "In a separate terminal window, please run:"
 echo -e "${BLUE}vault server -dev -dev-root-token-id=\"root\"${NC}"
@@ -77,8 +84,8 @@ echo -e "\n${GREEN}Vault server is running.${NC}"
 # Create the data directory
 echo -e "\n${GREEN}Creating Vault Agent data directory...${NC}"
 mkdir -p $VAULT_DATA_DIR
-chmod 750 $VAULT_DATA_DIR
-chown root:$VAULTAGENT_USER $VAULT_DATA_DIR
+chmod 755 $VAULT_DATA_DIR  # Changed to 755 to allow all users to access the directory
+chown root:root $VAULT_DATA_DIR
 
 echo -e "\n${GREEN}Creating application directories...${NC}"
 # Create directories for each app
@@ -275,6 +282,7 @@ for i in "${!APP_NAMES[@]}"; do
     app_name=${APP_NAMES[$i]}
     port=${LISTENER_PORTS[$i]}
     other_apps=""
+    script_path="$APP_SCRIPTS_DIR/${app_name}-script.py"
     
     # Properly create the array of other apps for testing
     for other_app in "${APP_NAMES[@]}"; do
@@ -285,7 +293,7 @@ for i in "${!APP_NAMES[@]}"; do
     # Remove trailing comma and space
     other_apps=${other_apps%, }
     
-    cat > $VAULT_DATA_DIR/${app_name}-script.py << EOF
+    cat > $script_path << EOF
 #!/usr/bin/env python3
 import os
 import requests
@@ -351,10 +359,13 @@ for other_app in other_apps:
         print(f"  ERROR: Access incorrectly granted to {other_app} secrets!")
 EOF
 
-    # Move script files to root of vault agents directory for easier access
-    cp $VAULT_DATA_DIR/${app_name}-script.py $VAULT_DATA_DIR/
-    chmod 755 $VAULT_DATA_DIR/${app_name}-script.py
-    chown $APP_USER:$APP_USER $VAULT_DATA_DIR/${app_name}-script.py
+    # Set proper file permissions - owned fully by app user
+    chmod 755 $script_path
+    chown $APP_USER:$APP_USER $script_path
+    
+    # Verify the permissions are set correctly
+    echo "Created script with permissions:"
+    ls -la $script_path
 done
 
 echo -e "\n${GREEN}Reloading systemd and enabling services...${NC}"
@@ -376,13 +387,22 @@ sleep 10
 # Check if tokens were created
 tokens_created=true
 for app_name in "${APP_NAMES[@]}"; do
-    if [ ! -f "$(printf $TOKEN_SINK_FORMAT $app_name)" ]; then
+    token_path=$(printf $TOKEN_SINK_FORMAT $app_name)
+    if [ ! -f "$token_path" ]; then
         echo -e "${RED}Error: Token for ${app_name} was not created.${NC}"
         echo "Check the service logs with: journalctl -u vault-agent-${app_name}.service"
         tokens_created=false
     else
         # Verify permissions on token files
-        ls -l $(printf $TOKEN_SINK_FORMAT $app_name)
+        ls -l $token_path
+        
+        # Fix token file permissions if needed
+        if ! getfacl $token_path 2>/dev/null | grep -q "$APP_USER:r"; then
+            echo "Fixing permissions on token file for $app_name"
+            chmod 440 $token_path
+            chown $VAULTAGENT_USER:$APP_USER $token_path
+            ls -l $token_path
+        fi
     fi
 done
 
@@ -395,8 +415,16 @@ fi
 
 echo -e "\n${GREEN}Testing application access with tokens...${NC}"
 for app_name in "${APP_NAMES[@]}"; do
+    script_path="$APP_SCRIPTS_DIR/${app_name}-script.py"
     echo -e "\n${BLUE}Running ${app_name} script as $APP_USER:${NC}"
-    sudo -u $APP_USER python3 $VAULT_DATA_DIR/${app_name}-script.py
+    
+    # Verify script exists and has correct permissions before running
+    if [ -f "$script_path" ] && [ -x "$script_path" ]; then
+        sudo -u $APP_USER python3 $script_path
+    else
+        echo -e "${RED}Error: Script $script_path is not accessible or executable by $APP_USER${NC}"
+        ls -la $script_path
+    fi
 done
 
 echo -e "\n${GREEN}Demonstration completed!${NC}"
