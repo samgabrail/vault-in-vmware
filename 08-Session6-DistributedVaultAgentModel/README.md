@@ -120,55 +120,83 @@ To customize the applications the script configures:
 
 ```bash
 # This is where you will store your application, each app will have its own user and home directory
+# It will also have access to the vault token in the .vault-token directory
+root@docker-1:/home/webapp_user# ll
+total 28
+drwxr-xr-x 4 webapp_user webapp_user 4096 Apr 30 20:49 ./
+drwxr-xr-x 8 root        root        4096 Apr 30 20:49 ../
+-rw-r--r-- 1 webapp_user webapp_user  220 Feb 25  2020 .bash_logout
+-rw-r--r-- 1 webapp_user webapp_user 3771 Feb 25  2020 .bashrc
+-rw-r--r-- 1 webapp_user webapp_user  807 Feb 25  2020 .profile
+drwxr-xr-x 2 webapp_user webapp_user 4096 Apr 30 20:50 scripts/
+drwxr-x--- 2 vaultagent  webapp_user 4096 Apr 30 20:53 .vault-token/
+
 root@docker-1:/home/webapp_user/scripts# ll
 total 12
-drwxr-xr-x 2 webapp_user webapp_user 4096 Apr 30 19:36 ./
-drwxr-xr-x 3 webapp_user webapp_user 4096 Apr 30 19:36 ../
--rwxr-xr-x 1 webapp_user webapp_user 1733 Apr 30 19:36 webapp-script.py*
+drwxr-xr-x 2 webapp_user webapp_user 4096 Apr 30 20:50 ./
+drwxr-xr-x 4 webapp_user webapp_user 4096 Apr 30 20:49 ../
+-rwxr-xr-x 1 webapp_user webapp_user 1739 Apr 30 20:50 webapp-script.py*
+
+root@docker-1:/home/webapp_user/.vault-token# ll
+total 12
+drwxr-x--- 2 vaultagent  webapp_user 4096 Apr 30 20:53 ./
+drwxr-xr-x 4 webapp_user webapp_user 4096 Apr 30 20:49 ../
+-r--r----- 1 vaultagent  vaultagent    95 Apr 30 20:53 vault-token
+
+root@docker-1:/home/database_user# ll
+total 28
+drwxr-xr-x 4 database_user database_user 4096 Apr 30 20:49 ./
+drwxr-xr-x 8 root          root          4096 Apr 30 20:49 ../
+-rw-r--r-- 1 database_user database_user  220 Feb 25  2020 .bash_logout
+-rw-r--r-- 1 database_user database_user 3771 Feb 25  2020 .bashrc
+-rw-r--r-- 1 database_user database_user  807 Feb 25  2020 .profile
+drwxr-xr-x 2 database_user database_user 4096 Apr 30 20:50 scripts/
+drwxr-x--- 2 vaultagent    database_user 4096 Apr 30 20:50 .vault-token/
 
 root@docker-1:/home/database_user/scripts# ll
 total 12
-drwxr-xr-x 2 database_user database_user 4096 Apr 30 19:36 ./
-drwxr-xr-x 3 database_user database_user 4096 Apr 30 19:36 ../
--rwxr-xr-x 1 database_user database_user 1741 Apr 30 19:36 database-script.py*
+drwxr-xr-x 2 database_user database_user 4096 Apr 30 20:50 ./
+drwxr-xr-x 4 database_user database_user 4096 Apr 30 20:49 ../
+-rwxr-xr-x 1 database_user database_user 1747 Apr 30 20:50 database-script.py*
 
+root@docker-1:/home/database_user/.vault-token# ll
+total 12
+drwxr-x--- 2 vaultagent    database_user 4096 Apr 30 20:50 ./
+drwxr-xr-x 4 database_user database_user 4096 Apr 30 20:49 ../
+-r--r----- 1 vaultagent    database_user   95 Apr 30 20:50 vault-token
 
 # This is where we store the config for the vault agents
 root@docker-1:/etc/vault-agents# ll
-total 60
-drwxr-xr-x   4 root       root          4096 Apr 30 17:06 ./
-drwxr-xr-x 102 root       root          4096 Apr 30 19:36 ../
-drwxr-x---   2 vaultagent database_user 4096 Apr 30 17:11 database/
--rw-r-----   1 vaultagent vaultagent     818 Apr 30 19:36 database-agent.hcl
--rwx------   1 vaultagent vaultagent    1035 Apr 30 19:36 database-agent-start.sh*
--rw-r--r--   1 root       root            68 Apr 30 19:36 database-policy.hcl
--rwxr-xr-x   1 appuser    appuser       1741 Apr 30 17:38 database-script.py*
--rw-r--r--   1 root       root           302 Apr 30 19:36 restart-policy.hcl
--rw-------   1 vaultagent vaultagent      37 Apr 30 19:36 restart-role-id
--rw-------   1 vaultagent vaultagent      37 Apr 30 19:36 restart-secret-id
-drwxr-x---   2 vaultagent webapp_user   4096 Apr 30 17:32 webapp/
--rw-r-----   1 vaultagent vaultagent     806 Apr 30 19:36 webapp-agent.hcl
--rwx------   1 vaultagent vaultagent    1025 Apr 30 19:36 webapp-agent-start.sh*
--rw-r--r--   1 root       root            66 Apr 30 19:36 webapp-policy.hcl
--rwxr-xr-x   1 appuser    appuser       1733 Apr 30 17:38 webapp-script.py*
+total 52
+drwxr-xr-x   4 root       root          4096 Apr 30 20:50 ./
+drwxr-xr-x 102 root       root          4096 Apr 30 20:49 ../
+drwxr-x---   2 vaultagent database_user 4096 Apr 30 20:50 database/
+-rw-r-----   1 vaultagent vaultagent     722 Apr 30 20:50 database-agent.hcl
+-rwx------   1 vaultagent vaultagent    1035 Apr 30 20:50 database-agent-start.sh*
+-rw-r--r--   1 root       root            68 Apr 30 20:49 database-policy.hcl
+-rw-r--r--   1 root       root           302 Apr 30 20:49 restart-policy.hcl
+-rw-------   1 vaultagent vaultagent      37 Apr 30 20:50 restart-role-id
+-rw-------   1 vaultagent vaultagent      37 Apr 30 20:50 restart-secret-id
+drwxr-x---   2 vaultagent webapp_user   4096 Apr 30 20:53 webapp/
+-rw-r-----   1 vaultagent vaultagent     712 Apr 30 20:50 webapp-agent.hcl
+-rwx------   1 vaultagent vaultagent    1025 Apr 30 20:50 webapp-agent-start.sh*
+-rw-r--r--   1 root       root            66 Apr 30 20:49 webapp-policy.hcl
 
 root@docker-1:/etc/vault-agents/webapp# ll
-total 20
-drwxr-x--- 2 vaultagent webapp_user 4096 Apr 30 17:32 ./
-drwxr-xr-x 4 root       root        4096 Apr 30 17:06 ../
--rw------- 1 root       root          36 Apr 30 17:32 role-id
--rw------- 1 root       root           7 Apr 30 17:32 vault-agent.pid
--r--r----- 1 vaultagent webapp_user   95 Apr 30 17:32 vault-token
+total 16
+drwxr-x--- 2 vaultagent webapp_user 4096 Apr 30 20:53 ./
+drwxr-xr-x 4 root       root        4096 Apr 30 20:50 ../
+-rw------- 1 vaultagent vaultagent    36 Apr 30 20:53 role-id
+-rw------- 1 vaultagent vaultagent     7 Apr 30 20:53 vault-agent.pid
 
 root@docker-1:/etc/vault-agents/webapp# cd ../database
 
 root@docker-1:/etc/vault-agents/database# ll
-total 20
-drwxr-x--- 2 vaultagent database_user 4096 Apr 30 17:11 ./
-drwxr-xr-x 4 root       root          4096 Apr 30 17:06 ../
--rw------- 1 root       root            36 Apr 30 17:11 role-id
--rw------- 1 root       root             7 Apr 30 17:11 vault-agent.pid
--r--r----- 1 vaultagent database_user   95 Apr 30 17:11 vault-token
+total 16
+drwxr-x--- 2 vaultagent database_user 4096 Apr 30 20:50 ./
+drwxr-xr-x 4 root       root          4096 Apr 30 20:50 ../
+-rw------- 1 vaultagent vaultagent      36 Apr 30 20:50 role-id
+-rw------- 1 vaultagent vaultagent       7 Apr 30 20:50 vault-agent.pid
 
 root@docker-1:/etc/vault-agents/database# ll /etc/systemd/system/vault-agent-webapp.service
 -rw-r--r-- 1 root root 240 Apr 30 19:36 /etc/systemd/system/vault-agent-webapp.service
@@ -177,6 +205,206 @@ root@docker-1:/etc/vault-agents/database# ll /etc/systemd/system/vault-agent-dat
 -rw-r--r-- 1 root root 244 Apr 30 19:36 /etc/systemd/system/vault-agent-database.service
 ```
 
+
+### Systemd Files
+
+#### Webapp
+
+```bash
+root@docker-1:/etc/vault-agents/database# cat /etc/systemd/system/vault-agent-webapp.service
+[Unit]
+Description=Vault Agent for Webapp
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/etc/vault-agents/webapp-agent-start.sh
+Restart=on-failure
+RestartSec=10
+User=vaultagent
+Group=vaultagent
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### Database
+
+```bash
+root@docker-1:/etc/vault-agents/database# cat /etc/systemd/system/vault-agent-database.service
+[Unit]
+Description=Vault Agent for Database
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/etc/vault-agents/database-agent-start.sh
+Restart=on-failure
+RestartSec=10
+User=vaultagent
+Group=vaultagent
+
+[Install]
+WantedBy=multi-user.target
+```
+
+
+### Vault Agent Configs
+
+#### Webapp
+
+```go
+// root@docker-1:/etc/vault-agents# cat webapp-agent.hcl
+exit_after_auth = false
+pid_file = "/etc/vault-agents/webapp/vault-agent.pid"
+
+vault {
+  address = "http://127.0.0.1:8200"
+}
+
+auto_auth {
+  method "approle" {
+    mount_path = "auth/approle"
+    config = {
+      role_id_file_path = "/etc/vault-agents/webapp/role-id"
+      secret_id_file_path = "/etc/vault-agents/webapp/wrapped-secret-id"
+      remove_secret_id_file_after_reading = true
+      secret_id_response_wrapping_path = "auth/approle/role/webapp-role/secret-id"
+    }
+  }
+
+  sink "file" {
+    config = {
+      path = "/home/webapp_user/.vault-token/vault-token"
+      mode = 0440
+    }
+  }
+}
+
+listener "tcp" {
+  address = "127.0.0.1:8007"
+  tls_disable = true
+}
+
+cache {
+  use_auto_auth_token = true
+}
+```
+
+#### Database
+
+```go
+// root@docker-1:/etc/vault-agents# cat database-agent.hcl
+exit_after_auth = false
+pid_file = "/etc/vault-agents/database/vault-agent.pid"
+
+vault {
+  address = "http://127.0.0.1:8200"
+}
+
+auto_auth {
+  method "approle" {
+    mount_path = "auth/approle"
+    config = {
+      role_id_file_path = "/etc/vault-agents/database/role-id"
+      secret_id_file_path = "/etc/vault-agents/database/wrapped-secret-id"
+      remove_secret_id_file_after_reading = true
+      secret_id_response_wrapping_path = "auth/approle/role/database-role/secret-id"
+    }
+  }
+
+  sink "file" {
+    config = {
+      path = "/home/database_user/.vault-token/vault-token"
+      mode = 0440
+    }
+  }
+}
+
+listener "tcp" {
+  address = "127.0.0.1:8008"
+  tls_disable = true
+}
+
+cache {
+  use_auto_auth_token = true
+}
+```
+
+
+### Vault Agent Startup Scripts
+
+#### Webapp
+
+```bash
+root@docker-1:/etc/vault-agents# cat webapp-agent-start.sh
+#!/bin/bash
+# Startup script for Vault Agent for webapp
+
+export VAULT_ADDR='http://127.0.0.1:8200'
+APP_DIR="/etc/vault-agents/webapp"
+
+# Grab the restart approle creds from files
+RESTART_ROLE_ID=$(cat /etc/vault-agents/restart-role-id)
+RESTART_SECRET_ID=$(cat /etc/vault-agents/restart-secret-id)
+
+# Authenticate to Vault with the restart AppRole creds
+VAULT_TOKEN=$(vault write -field=token auth/approle/login role_id=$RESTART_ROLE_ID secret_id=$RESTART_SECRET_ID)
+
+if [ -z "$VAULT_TOKEN" ]; then
+    echo "Failed to authenticate with restart role"
+    exit 1
+fi
+
+export VAULT_TOKEN
+
+# Get the role ID for this application
+vault read -field=role_id auth/approle/role/webapp-role/role-id > $APP_DIR/role-id
+chmod 600 $APP_DIR/role-id
+
+# Write a wrapped secret-id to the expected location
+vault write -field=wrapping_token -wrap-ttl=200s -f auth/approle/role/webapp-role/secret-id > $APP_DIR/wrapped-secret-id
+chmod 600 $APP_DIR/wrapped-secret-id
+
+# Start the agent
+exec vault agent -config=/etc/vault-agents/webapp-agent.hcl
+```
+
+#### Database
+
+```bash
+# root@docker-1:/etc/vault-agents# cat database-agent-start.sh
+#!/bin/bash
+# Startup script for Vault Agent for database
+
+export VAULT_ADDR='http://127.0.0.1:8200'
+APP_DIR="/etc/vault-agents/database"
+
+# Grab the restart approle creds from files
+RESTART_ROLE_ID=$(cat /etc/vault-agents/restart-role-id)
+RESTART_SECRET_ID=$(cat /etc/vault-agents/restart-secret-id)
+
+# Authenticate to Vault with the restart AppRole creds
+VAULT_TOKEN=$(vault write -field=token auth/approle/login role_id=$RESTART_ROLE_ID secret_id=$RESTART_SECRET_ID)
+
+if [ -z "$VAULT_TOKEN" ]; then
+    echo "Failed to authenticate with restart role"
+    exit 1
+fi
+
+export VAULT_TOKEN
+
+# Get the role ID for this application
+vault read -field=role_id auth/approle/role/database-role/role-id > $APP_DIR/role-id
+chmod 600 $APP_DIR/role-id
+
+# Write a wrapped secret-id to the expected location
+vault write -field=wrapping_token -wrap-ttl=200s -f auth/approle/role/database-role/secret-id > $APP_DIR/wrapped-secret-id
+chmod 600 $APP_DIR/wrapped-secret-id
+
+# Start the agent
+exec vault agent -config=/etc/vault-agents/database-agent.hcl
+```
 
 ### Application Scripts
 
@@ -317,45 +545,71 @@ for other_app in other_apps:
         print(f"  ERROR: Access incorrectly granted to {other_app} secrets!")
 ```
 
-### Systemd Files
+## Testing with AutoAuth with No Stored Tokens
 
-#### Webapp
+Since the vault agents are listening, we can use them as proxies for the Vault server
 
+For the webapp:
 ```bash
-root@docker-1:/etc/vault-agents/database# cat /etc/systemd/system/vault-agent-webapp.service
-[Unit]
-Description=Vault Agent for Webapp
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/etc/vault-agents/webapp-agent-start.sh
-Restart=on-failure
-RestartSec=10
-User=vaultagent
-Group=vaultagent
-
-[Install]
-WantedBy=multi-user.target
+root@docker-1:/etc/vault-agents# curl -s http://127.0.0.1:8007/v1/secret/data/webapp/config | jq
 ```
 
-#### Database
-
+Output:
+```json
+{
+  "request_id": "1acb82a6-d32e-4ba4-100e-8dda68686c3e",
+  "lease_id": "",
+  "renewable": false,
+  "lease_duration": 0,
+  "data": {
+    "data": {
+      "api-key": "webapp-secret-key",
+      "db-password": "webapp-db-password"
+    },
+    "metadata": {
+      "created_time": "2025-04-30T20:49:59.241824897Z",
+      "custom_metadata": null,
+      "deletion_time": "",
+      "destroyed": false,
+      "version": 1
+    }
+  },
+  "wrap_info": null,
+  "warnings": null,
+  "auth": null,
+  "mount_type": "kv"
+}
+```
+and for the Database:
 ```bash
-root@docker-1:/etc/vault-agents/database# cat /etc/systemd/system/vault-agent-database.service
-[Unit]
-Description=Vault Agent for Database
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/etc/vault-agents/database-agent-start.sh
-Restart=on-failure
-RestartSec=10
-User=vaultagent
-Group=vaultagent
-
-[Install]
-WantedBy=multi-user.target
+curl -s http://127.0.0.1:8008/v1/secret/data/database/config | jq
 ```
 
+Output:
+```json
+{
+  "request_id": "e9e270aa-75d8-804d-2b88-1d3dedc86927",
+  "lease_id": "",
+  "renewable": false,
+  "lease_duration": 0,
+  "data": {
+    "data": {
+      "api-key": "database-secret-key",
+      "db-password": "database-db-password"
+    },
+    "metadata": {
+      "created_time": "2025-04-30T20:49:59.45550347Z",
+      "custom_metadata": null,
+      "deletion_time": "",
+      "destroyed": false,
+      "version": 1
+    }
+  },
+  "wrap_info": null,
+  "warnings": null,
+  "auth": null,
+  "mount_type": "kv"
+}
+```
+
+However, now any app can access the secrets of any other app by talking to the vault agent directly. Need to consider the pros and cons.
