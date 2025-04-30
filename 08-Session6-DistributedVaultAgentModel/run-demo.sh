@@ -26,7 +26,7 @@ VAULTAGENT_USER="vaultagent"
 # List of applications to set up - MODIFY THIS LIST for your environment
 declare -a APP_NAMES=("webapp" "database")
 # Use higher port numbers that don't conflict with the Vault server
-LISTENER_PORTS=(8100 8200) # Corresponding local ports for Vault Agent API endpoints
+LISTENER_PORTS=(8007 8008) # Corresponding local ports for Vault Agent API endpoints
 
 echo -e "${BLUE}=== Vault Agent Per-App Isolation Demo ===${NC}"
 echo "This script demonstrates using separate Vault Agents with systemd integration for applications."
