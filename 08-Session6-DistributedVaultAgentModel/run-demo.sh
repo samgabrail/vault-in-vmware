@@ -6,7 +6,7 @@
 # 3. Systemd integration for Vault Agents
 # 4. On-demand role-id and secret-id delivery
 # 5. Support for arbitrary application names
-# 6. Dedicated users for each application
+# 6. A single user for all applications (simplified approach)
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -19,9 +19,11 @@ VAULT_DATA_DIR="/etc/vault-agents"
 APP_DATA_DIR_FORMAT="$VAULT_DATA_DIR/%s"
 ROLE_ID_FILE_FORMAT="$VAULT_DATA_DIR/%s/role-id"
 WRAPPED_SECRET_ID_FILE_FORMAT="$VAULT_DATA_DIR/%s/wrapped-secret-id"
-TOKEN_SINK_FORMAT="/home/%s_user/.vault-token/vault-token"
-SCRIPT_PATH_FORMAT="$VAULT_DATA_DIR/%s-script.py"
+TOKEN_SINK_DIR="/home/springApps/.vault-tokens"
+TOKEN_SINK_FORMAT="$TOKEN_SINK_DIR/%s-token"
+SCRIPT_PATH_FORMAT="/home/springApps/scripts/%s-script.py"
 VAULTAGENT_USER="vaultagent"
+APPS_USER="springApps"
 
 # List of applications to set up - MODIFY THIS LIST for your environment
 declare -a APP_NAMES=("webapp" "database")
@@ -54,27 +56,21 @@ echo -e "\n${GREEN}Creating dedicated users...${NC}"
 # Create vaultagent user for running Vault Agents
 id -u $VAULTAGENT_USER &>/dev/null || useradd -r -s /bin/false $VAULTAGENT_USER
 
-# Create a dedicated user for each application
-for app_name in "${APP_NAMES[@]}"; do
-    app_user="${app_name}_user"
+# Create a single user for all applications
+id -u $APPS_USER &>/dev/null || useradd -m -s /bin/bash $APPS_USER
     
-    # Create user with home directory and login shell
-    id -u $app_user &>/dev/null || useradd -m -s /bin/bash $app_user
-    
-    # Create scripts directory in user's home
-    app_scripts_dir="/home/$app_user/scripts"
-    mkdir -p $app_scripts_dir
-    chown $app_user:$app_user $app_scripts_dir
-    chmod 755 $app_scripts_dir
-    
-    # Create token directory in user's home
-    token_dir="/home/$app_user/.vault-token"
-    mkdir -p $token_dir
-    chown $VAULTAGENT_USER:$app_user $token_dir
-    chmod 750 $token_dir
-    
-    echo "Created user $app_user with home directory /home/$app_user"
-done
+# Create scripts directory in user's home
+app_scripts_dir="/home/$APPS_USER/scripts"
+mkdir -p $app_scripts_dir
+chown $APPS_USER:$APPS_USER $app_scripts_dir
+chmod 755 $app_scripts_dir
+
+# Create tokens directory in user's home
+mkdir -p $TOKEN_SINK_DIR
+chown $VAULTAGENT_USER:$APPS_USER $TOKEN_SINK_DIR
+chmod 750 $TOKEN_SINK_DIR
+
+echo "Created user $APPS_USER with home directory /home/$APPS_USER"
 
 echo -e "\n${GREEN}Starting Vault in dev mode...${NC}"
 echo "In a separate terminal window, please run:"
@@ -103,12 +99,11 @@ chown root:root $VAULT_DATA_DIR
 echo -e "\n${GREEN}Creating application directories...${NC}"
 # Create directories for each app
 for app_name in "${APP_NAMES[@]}"; do
-    app_user="${app_name}_user"
     mkdir -p $(printf $APP_DATA_DIR_FORMAT $app_name)
-    # Allow app user to traverse into these directories
+    # Allow vault agent to manage these directories
     chmod 750 $(printf $APP_DATA_DIR_FORMAT $app_name)
-    # Set group to app user so they can access token files
-    chown $VAULTAGENT_USER:$app_user $(printf $APP_DATA_DIR_FORMAT $app_name)
+    # Set ownership to vault agent
+    chown $VAULTAGENT_USER:$VAULTAGENT_USER $(printf $APP_DATA_DIR_FORMAT $app_name)
 done
 
 echo -e "\n${GREEN}Creating policies...${NC}"
@@ -225,8 +220,8 @@ echo -e "\n${GREEN}Creating Vault Agent configurations...${NC}"
 # Create Vault Agent configuration for each app
 for i in "${!APP_NAMES[@]}"; do
     app_name=${APP_NAMES[$i]}
-    app_user="${app_name}_user"
     port=${LISTENER_PORTS[$i]}
+    token_path=$(printf $TOKEN_SINK_FORMAT $app_name)
     
     cat > $VAULT_DATA_DIR/${app_name}-agent.hcl << EOF
 exit_after_auth = false
@@ -249,7 +244,7 @@ auto_auth {
 
   sink "file" {
     config = {
-      path = "$(printf $TOKEN_SINK_FORMAT $app_name)"
+      path = "${token_path}"
       mode = 0440
     }
   }
@@ -294,10 +289,10 @@ echo -e "\n${GREEN}Creating test applications...${NC}"
 # Create test application scripts
 for i in "${!APP_NAMES[@]}"; do
     app_name=${APP_NAMES[$i]}
-    app_user="${app_name}_user"
     port=${LISTENER_PORTS[$i]}
     other_apps=""
-    script_path="/home/$app_user/scripts/${app_name}-script.py"
+    script_path=$(printf $SCRIPT_PATH_FORMAT $app_name)
+    token_path=$(printf $TOKEN_SINK_FORMAT $app_name)
     
     # Properly create the array of other apps for testing
     for other_app in "${APP_NAMES[@]}"; do
@@ -315,7 +310,7 @@ import requests
 import json
 import time
 
-TOKEN_PATH = '$(printf $TOKEN_SINK_FORMAT $app_name)'
+TOKEN_PATH = '${token_path}'
 VAULT_ADDR = 'http://127.0.0.1:8200'
 AGENT_ADDR = 'http://127.0.0.1:${port}'
 
@@ -374,9 +369,9 @@ for other_app in other_apps:
         print(f"  ERROR: Access incorrectly granted to {other_app} secrets!")
 EOF
 
-    # Set proper file permissions - owned fully by app user
+    # Set proper file permissions - owned by the applications user
     chmod 755 $script_path
-    chown $app_user:$app_user $script_path
+    chown $APPS_USER:$APPS_USER $script_path
     
     # Verify the permissions are set correctly
     echo "Created script with permissions:"
@@ -402,7 +397,6 @@ sleep 10
 # Check if tokens were created
 tokens_created=true
 for app_name in "${APP_NAMES[@]}"; do
-    app_user="${app_name}_user"
     token_path=$(printf $TOKEN_SINK_FORMAT $app_name)
     if [ ! -f "$token_path" ]; then
         echo -e "${RED}Error: Token for ${app_name} was not created.${NC}"
@@ -412,11 +406,11 @@ for app_name in "${APP_NAMES[@]}"; do
         # Verify permissions on token files
         ls -l $token_path
         
-        # Fix token file permissions if needed - ensure app user can access it
-        if [ "$(stat -c '%G' $token_path)" != "$app_user" ]; then
+        # Fix token file permissions if needed - ensure apps user can access it
+        if [ "$(stat -c '%G' $token_path)" != "$APPS_USER" ]; then
             echo "Fixing permissions on token file for $app_name"
             chmod 440 $token_path
-            chown $VAULTAGENT_USER:$app_user $token_path
+            chown $VAULTAGENT_USER:$APPS_USER $token_path
             ls -l $token_path
         fi
     fi
@@ -431,15 +425,14 @@ fi
 
 echo -e "\n${GREEN}Testing application access with tokens...${NC}"
 for app_name in "${APP_NAMES[@]}"; do
-    app_user="${app_name}_user"
-    script_path="/home/$app_user/scripts/${app_name}-script.py"
-    echo -e "\n${BLUE}Running ${app_name} script as $app_user:${NC}"
+    script_path=$(printf $SCRIPT_PATH_FORMAT $app_name)
+    echo -e "\n${BLUE}Running ${app_name} script as $APPS_USER:${NC}"
     
     # Verify script exists and has correct permissions before running
     if [ -f "$script_path" ] && [ -x "$script_path" ]; then
-        sudo -u $app_user python3 $script_path
+        sudo -u $APPS_USER python3 $script_path
     else
-        echo -e "${RED}Error: Script $script_path is not accessible or executable by $app_user${NC}"
+        echo -e "${RED}Error: Script $script_path is not accessible or executable by $APPS_USER${NC}"
         ls -la $script_path
     fi
 done
@@ -448,11 +441,7 @@ echo -e "\n${GREEN}Demonstration completed!${NC}"
 echo ""
 echo "The system is now set up with:"
 echo "1. A dedicated '$VAULTAGENT_USER' user for running Vault Agents"
-echo "2. Dedicated users for each application:"
-for app_name in "${APP_NAMES[@]}"; do
-    app_user="${app_name}_user"
-    echo "   - $app_user for the $app_name application"
-done
+echo "2. A single '$APPS_USER' user for all applications"
 echo "3. Proper file permissions ensuring separation of concerns"
 echo "4. A restart AppRole with tightly scoped permissions"
 echo "5. Systemd services running as non-root user"
@@ -461,9 +450,8 @@ echo ""
 echo "The following applications were configured:"
 for i in "${!APP_NAMES[@]}"; do
     app_name=${APP_NAMES[$i]}
-    app_user="${app_name}_user"
     port=${LISTENER_PORTS[$i]}
-    echo "  - ${app_name}: API endpoint at http://127.0.0.1:${port}, accessed by user ${app_user}"
+    echo "  - ${app_name}: API endpoint at http://127.0.0.1:${port}, accessed by user ${APPS_USER}"
 done
 echo ""
 echo "To clean up when you're done (not required now):"
@@ -473,11 +461,7 @@ echo "  sudo rm -f $(printf "/etc/systemd/system/vault-agent-%s.service " "${APP
 echo "  sudo rm -rf $VAULT_DATA_DIR"
 echo "  sudo systemctl daemon-reload"
 echo "  sudo userdel $VAULTAGENT_USER"
-# Delete the app users
-for app_name in "${APP_NAMES[@]}"; do
-    app_user="${app_name}_user"
-    echo "  sudo userdel -r $app_user  # -r flag removes home directory"
-done
+echo "  sudo userdel -r $APPS_USER  # -r flag removes home directory"
 echo ""
 echo -e "${BLUE}=== Demo Complete ===${NC}"
 echo "You can continue to experiment with the setup or stop the Vault dev server when you're done." 
