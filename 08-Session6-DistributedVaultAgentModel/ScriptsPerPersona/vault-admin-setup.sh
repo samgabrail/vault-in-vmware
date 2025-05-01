@@ -131,18 +131,43 @@ EOF
     echo -e "${GREEN}Restart Role ID:${NC} $restart_role_id"
     echo -e "${GREEN}Restart Secret ID:${NC} $restart_secret_id"
 
-    # Create a credentials file that can be securely transferred to SysAdmins
-    credentials_file="$TMP_DIR/restart-approle-credentials.json"
-    cat > "$credentials_file" << EOF
-{
-  "role_id": "$restart_role_id",
-  "secret_id": "$restart_secret_id"
-}
-EOF
+    # Ask where to save the credentials file
+    echo -e "\n${BLUE}Where would you like to save the credentials file?${NC}"
+    echo "1. Current directory (./restart-approle-credentials.json)"
+    echo "2. Custom path"
+    echo "3. Don't save to file (display only)"
+    read -p "Option [1]: " save_option
+    save_option=${save_option:-1}
+    
+    credentials_json="{
+  \"role_id\": \"$restart_role_id\",
+  \"secret_id\": \"$restart_secret_id\"
+}"
 
-    echo -e "\n${BLUE}Credentials saved to:${NC} $credentials_file"
-    echo "Transfer this file securely to your System Administrators."
-    echo "Consider using a secure file transfer method"
+    case $save_option in
+        1)
+            credentials_file="./restart-approle-credentials.json"
+            echo "$credentials_json" > "$credentials_file"
+            echo -e "\n${BLUE}Credentials saved to:${NC} $credentials_file"
+            ;;
+        2)
+            read -p "Enter the path where you want to save the credentials file: " custom_path
+            # Ensure the directory exists
+            credentials_dir=$(dirname "$custom_path")
+            mkdir -p "$credentials_dir" 2>/dev/null
+            echo "$credentials_json" > "$custom_path"
+            echo -e "\n${BLUE}Credentials saved to:${NC} $custom_path"
+            ;;
+        3)
+            echo -e "\n${BLUE}Credentials not saved to file. Please copy them from above.${NC}"
+            ;;
+        *)
+            echo -e "${RED}Invalid option. Credentials not saved to file.${NC}"
+            ;;
+    esac
+    
+    echo "Transfer these credentials securely to your System Administrators."
+    echo "Consider using a secure file transfer method or a secret management tool."
 }
 
 # Function to setup application AppRoles and policies
