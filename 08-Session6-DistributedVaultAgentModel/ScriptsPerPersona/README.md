@@ -30,28 +30,27 @@ Responsible for configuring the application servers:
 - Securely storing the restart AppRole credentials
 - Maintaining the infrastructure supporting the applications
 
-### 3. DevOps Team
-Responsible for application integration:
-- Providing code examples to application teams
-- Communicating token sink paths to application developers
-- Documenting the integration approach
-- Supporting application teams during implementation
-- Ensuring applications follow security best practices
+### 3. Application Teams
+Responsible for consuming the provided tokens:
+- Reading the token from the file sink path
+- Using the token to authenticate with Vault
+- Retrieving application-specific secrets
+- Implementing proper error handling and fallbacks
 
 ## Implementation Scripts
 
-The implementation is split into three separate scripts, each targeting one of the above personas:
+The implementation is split into multiple scripts:
 
 1. **[vault-admin-setup.sh](vault-admin-setup.sh)**: Used by Vault Administrators to configure the Vault server.
 2. **[sysadmin-setup.sh](sysadmin-setup.sh)**: Used by System Administrators to set up Vault Agent services on application servers.
-3. **[devops-integration.sh](devops-integration.sh)**: Used by DevOps teams to create integration examples for application developers.
+3. **[demo-app-secret.sh](demo-app-secret.sh)**: Used to demonstrate how an application would use the token to access secrets.
 
 ## Prerequisites
 
 - Linux environment (Ubuntu/Debian recommended)
 - Vault CLI installed
 - `jq` for JSON parsing
-- Python 3 (for sample scripts)
+- `curl` for API requests
 - Root/sudo access (required for systemd operations)
 - A running Vault server
 
@@ -69,15 +68,78 @@ The implementation is split into three separate scripts, each targeting one of t
 2. Enter the restart AppRole credentials provided by the Vault Administrator
 3. Specify the application name to configure
 4. Validate that Vault Agent services are running correctly
-5. Share token file paths and relevant information with DevOps
+5. Share token file paths with application teams
 
-### Step 3: DevOps Team
-1. Run the `devops-integration.sh` script
-2. Generate example integration code for the application
-3. Communicate token sink file paths to application developers
-4. Create documentation for application teams
-5. Provide guidance on best practices
-6. Support application teams during integration
+### Step 3: Testing the Setup
+1. Use the `demo-app-secret.sh` script to verify that the token can be used to access secrets
+2. Integrate the token into actual applications by following the same pattern
+
+## Testing with demo-app-secret.sh
+
+The `demo-app-secret.sh` script demonstrates how an application would use the token to access secrets from Vault. This script:
+
+1. Reads the token from the token sink file for a specified application
+2. Uses curl to make a request to Vault with the token
+3. Retrieves and displays the secret
+
+### Usage
+
+```bash
+# Basic usage (default paths)
+sudo ./demo-app-secret.sh app1
+
+# Custom Vault address
+sudo ./demo-app-secret.sh --addr http://vault.example.com:8200 app1
+
+# Custom secret path
+sudo ./demo-app-secret.sh --path secret/data/app1/credentials app1
+
+# Get help
+./demo-app-secret.sh --help
+```
+
+### Running as Different Users
+
+The script needs to be able to read the token files, which are typically owned by `vaultagent:springApps` with `440` permissions. You can run it as:
+
+1. Root user (has access to all files):
+   ```bash
+   sudo ./demo-app-secret.sh app1
+   ```
+
+2. The springApps user (has group read access to the token):
+   ```bash
+   sudo -u springApps ./demo-app-secret.sh app1
+   ```
+
+### Example Output
+
+```
+=== Demo: Accessing Vault Secret with Token ===
+Application: app1
+Secret Path: secret/data/app1/config
+Vault Server: http://127.0.0.1:8200
+
+Reading token from /home/springApps/.vault-tokens/app1-token...
+Token: hvs.CAESI0... (truncated for security)
+
+Retrieving secret from Vault...
+Command: curl -s -H "X-Vault-Token: $TOKEN" http://127.0.0.1:8200/v1/secret/data/app1/config
+
+Secret retrieved successfully:
+{
+  "api-key": "app1-secret-key",
+  "db-password": "app1-db-password"
+}
+
+=== Demo Complete ===
+This demonstrates that:
+1. The token was successfully created by the Vault Agent
+2. The token has the correct permissions to access the secret
+3. The application can use this token to authenticate to Vault
+
+In a real application, this token would be used similarly to access secrets programmatically.
+```
 
 ## Key Security Features
 
@@ -138,6 +200,34 @@ This implementation uses Vault Agent in "token-only" mode:
 - AppRole credentials are stored with restrictive permissions
 - Systemd services run with appropriate privileges
 
+## Application Integration Pattern
+
+Applications should follow this pattern to access secrets:
+
+```python
+# Python example
+import os
+import requests
+
+# Token path provided by SysAdmin
+TOKEN_PATH = '/home/springApps/.vault-tokens/app1-token'
+VAULT_ADDR = 'http://vault.example.com:8200'
+
+# Read the token
+with open(TOKEN_PATH, 'r') as f:
+    vault_token = f.read().strip()
+
+# Use the token to authenticate with Vault
+headers = {'X-Vault-Token': vault_token}
+response = requests.get(f'{VAULT_ADDR}/v1/secret/data/app1/config', headers=headers)
+
+# Get the secret
+if response.status_code == 200:
+    secret_data = response.json()['data']['data']
+    api_key = secret_data['api-key']
+    db_password = secret_data['db-password']
+```
+
 ## Troubleshooting
 
 ### Vault Agent Service Issues
@@ -169,7 +259,7 @@ sudo chmod 440 /home/springApps/.vault-tokens/<application>-token
 
 - **Vault Administration**: Security team should regularly review and audit policies and AppRoles
 - **System Administration**: Monitor Vault Agent services and ensure they're running properly
-- **DevOps**: Keep integration documentation and examples up to date, and ensure all application teams have the correct token paths
+- **Application Teams**: Ensure proper error handling and fallback mechanisms in applications
 
 ## Cleanup Instructions
 
@@ -201,13 +291,4 @@ When you need to remove an application:
    
    # Reload systemd
    sudo systemctl daemon-reload
-   ```
-
-3. **DevOps Team**:
-   ```bash
-   # Remove the example scripts
-   rm /home/springApps/scripts/<application>-*
-   
-   # Update documentation to remove references to the application
-   # Notify application teams that the application has been removed
    ```
