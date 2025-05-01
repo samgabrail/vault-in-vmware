@@ -80,6 +80,21 @@ EOF
         echo "Created restart"
     fi
 
+    # Enable AppRole auth method if not already enabled
+    echo -e "\n${GREEN}Ensuring AppRole authentication is enabled...${NC}"
+    if vault auth list | grep -q "approle/"; then
+        echo "AppRole auth method is already enabled"
+    else
+        echo "Enabling AppRole auth method..."
+        vault auth enable approle
+        if [ $? -eq 0 ]; then
+            echo "Successfully enabled AppRole auth method"
+        else
+            echo -e "${RED}Error: Failed to enable AppRole auth method. Aborting.${NC}"
+            exit 1
+        fi
+    fi
+
     # Check if restart AppRole already exists
     if vault read auth/approle/role/restart &>/dev/null; then
         echo "Restart AppRole already exists, skipping creation."
@@ -93,8 +108,21 @@ EOF
     fi
 
     # Generate the restart role credentials
+    echo "Generating restart role credentials..."
     restart_role_id=$(vault read -format=json auth/approle/role/restart/role-id | jq -r '.data.role_id')
+    
+    if [ -z "$restart_role_id" ] || [ "$restart_role_id" == "null" ]; then
+        echo -e "${RED}Error: Failed to retrieve role ID for restart AppRole.${NC}"
+        echo "Please check that the AppRole was created successfully."
+        exit 1
+    fi
+    
     restart_secret_id=$(vault write -f -format=json auth/approle/role/restart/secret-id | jq -r '.data.secret_id')
+    
+    if [ -z "$restart_secret_id" ] || [ "$restart_secret_id" == "null" ]; then
+        echo -e "${RED}Error: Failed to generate secret ID for restart AppRole.${NC}"
+        exit 1
+    fi
 
     # Output the restart role credentials (for SysAdmin)
     echo -e "\n${BLUE}==== RESTART APPROLE CREDENTIALS ====${NC}"
@@ -211,7 +239,18 @@ EOF
 
     echo -e "\n${GREEN}Setting up AppRole authentication...${NC}"
     # Enable AppRole auth method if not already enabled
-    vault auth enable approle 2>/dev/null || echo "AppRole already enabled"
+    if vault auth list | grep -q "approle/"; then
+        echo "AppRole auth method is already enabled"
+    else
+        echo "Enabling AppRole auth method..."
+        vault auth enable approle
+        if [ $? -eq 0 ]; then
+            echo "Successfully enabled AppRole auth method"
+        else
+            echo -e "${RED}Error: Failed to enable AppRole auth method. Aborting.${NC}"
+            exit 1
+        fi
+    fi
 
     # Create AppRole for each app
     for app_name in "${APP_NAMES[@]}"; do
