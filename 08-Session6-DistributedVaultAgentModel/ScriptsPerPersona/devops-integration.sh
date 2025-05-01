@@ -15,6 +15,31 @@ NC='\033[0m' # No Color
 APPS_USER="springApps"
 TOKEN_SINK_DIR="/home/$APPS_USER/.vault-tokens"
 
+# Check if running as root or with sudo
+check_permissions() {
+    # If running as root, we're good
+    if [ "$(id -u)" -eq 0 ]; then
+        return 0
+    fi
+    
+    # If running as the APPS_USER, we're good for scripts directory
+    if [ "$(id -un)" = "$APPS_USER" ]; then
+        return 0
+    fi
+    
+    # Otherwise, we need to check if we can write to the scripts directory
+    if [ ! -w "$1" ]; then
+        echo -e "${RED}Error: You don't have write permissions to $1${NC}"
+        echo "You can either:"
+        echo "1. Run this script with sudo"
+        echo "2. Run this script as the $APPS_USER user"
+        echo "3. Specify a different directory where you have write permissions"
+        return 1
+    fi
+    
+    return 0
+}
+
 echo -e "${BLUE}=== DevOps Integration Tools ===${NC}"
 echo "This script helps DevOps teams integrate applications with Vault."
 
@@ -39,14 +64,36 @@ SCRIPTS_DIR="/home/$APPS_USER/scripts"
 read -p "Enter directory to save sample scripts [$SCRIPTS_DIR]: " input
 SCRIPTS_DIR=${input:-$SCRIPTS_DIR}
 
+# Check if we can write to the specified directory
+if ! check_permissions "$SCRIPTS_DIR"; then
+    read -p "Would you like to specify a different directory? (y/n) [y]: " change_dir
+    change_dir=${change_dir:-y}
+    
+    if [[ "$change_dir" =~ ^[Yy] ]]; then
+        read -p "Enter a directory where you have write permissions: " SCRIPTS_DIR
+        # Make sure the new directory exists
+        mkdir -p "$SCRIPTS_DIR" 2>/dev/null
+        
+        # Check permissions again
+        if ! check_permissions "$SCRIPTS_DIR"; then
+            echo -e "${RED}Error: Still can't write to $SCRIPTS_DIR.${NC}"
+            echo "Suggestion: Run the script with sudo or as the $APPS_USER user."
+            exit 1
+        fi
+    else
+        echo -e "${RED}Warning: Proceeding anyway, but you may encounter permission errors.${NC}"
+    fi
+fi
+
 # Create the directory if it doesn't exist
 if [ ! -d "$SCRIPTS_DIR" ]; then
     echo "Creating directory $SCRIPTS_DIR"
-    mkdir -p "$SCRIPTS_DIR"
-    # Check if we can write to this directory, if not, use /tmp
-    if [ ! -w "$SCRIPTS_DIR" ]; then
-        echo -e "${RED}Cannot write to $SCRIPTS_DIR, using /tmp instead${NC}"
-        SCRIPTS_DIR="/tmp"
+    mkdir -p "$SCRIPTS_DIR" 2>/dev/null
+    # Check if creation was successful
+    if [ ! -d "$SCRIPTS_DIR" ]; then
+        echo -e "${RED}Failed to create directory $SCRIPTS_DIR. Please check permissions.${NC}"
+        echo "Suggestion: Run the script with sudo or as the $APPS_USER user."
+        exit 1
     fi
 fi
 
@@ -59,7 +106,8 @@ for i in "${!APP_NAMES[@]}"; do
     
     # Create a Python example
     python_script="$SCRIPTS_DIR/${app_name}-script.py"
-    cat > "$python_script" << EOF
+    # Use a temporary file first
+    cat > "/tmp/${app_name}-script.py" << EOF
 #!/usr/bin/env python3
 """
 Sample script demonstrating how to use Vault tokens for ${app_name}
@@ -144,12 +192,18 @@ if __name__ == "__main__":
     exit(main())
 EOF
 
-    # Make the script executable
-    chmod 755 "$python_script"
+    # Move the file to the final destination with error handling
+    if ! mv "/tmp/${app_name}-script.py" "$python_script" 2>/dev/null; then
+        echo -e "${RED}Failed to create $python_script. Check permissions.${NC}"
+    else
+        # Make the script executable
+        chmod 755 "$python_script" 2>/dev/null || echo -e "${RED}Failed to make $python_script executable.${NC}"
+    fi
     
     # Create a Java example 
     java_script="$SCRIPTS_DIR/${app_name}-VaultClient.java"
-    cat > "$java_script" << EOF
+    # Use a temporary file first
+    cat > "/tmp/${app_name}-VaultClient.java" << EOF
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -233,9 +287,15 @@ public class ${app_name^}VaultClient {
 }
 EOF
 
+    # Move the file to the final destination with error handling
+    if ! mv "/tmp/${app_name}-VaultClient.java" "$java_script" 2>/dev/null; then
+        echo -e "${RED}Failed to create $java_script. Check permissions.${NC}"
+    fi
+
     # Create a Node.js example
     node_script="$SCRIPTS_DIR/${app_name}-vault.js"
-    cat > "$node_script" << EOF
+    # Use a temporary file first
+    cat > "/tmp/${app_name}-vault.js" << EOF
 #!/usr/bin/env node
 /**
  * Example Node.js client for accessing Vault tokens
@@ -318,7 +378,13 @@ async function main() {
 // Run the main function
 main();
 EOF
-    chmod 755 "$node_script"
+
+    # Move the file to the final destination with error handling
+    if ! mv "/tmp/${app_name}-vault.js" "$node_script" 2>/dev/null; then
+        echo -e "${RED}Failed to create $node_script. Check permissions.${NC}"
+    else
+        chmod 755 "$node_script" 2>/dev/null || echo -e "${RED}Failed to make $node_script executable.${NC}"
+    fi
     
     echo "Created example scripts for $app_name:"
     echo "- Python: $python_script"
@@ -330,7 +396,8 @@ done
 echo -e "\n${GREEN}Creating documentation for application teams...${NC}"
 # Create documentation for application teams
 docs_file="$SCRIPTS_DIR/vault-integration-guide.md"
-cat > "$docs_file" << EOF
+# Use a temporary file first
+cat > "/tmp/vault-integration-guide.md" << EOF
 # Vault Integration Guide for Application Teams
 
 This guide explains how to integrate your application with HashiCorp Vault using the token file provided by the Vault Agent.
@@ -383,11 +450,18 @@ done)
 **Token not available?**
 - Check if the Vault Agent is running: \`systemctl status vault-agent-<app-name>\`
 - Verify file permissions on the token file
+- Ensure your application has read access to the token file
 - Contact the System Administrator if the issue persists
 
 **Connection issues?**
 - Verify the Vault server is accessible
 - Ensure correct network connectivity
+
+## File Permissions
+
+- Token file ownership: \`vaultagent:springApps\` with mode \`440\` (readable by the owner and group)
+- Your application should run as the \`springApps\` user to read the token file
+- If your application runs as a different user, work with your System Administrator to set up appropriate permissions
 
 ## Support
 
@@ -398,7 +472,12 @@ For questions or issues, contact:
 
 EOF
 
-echo -e "${GREEN}Created integration guide:${NC} $docs_file"
+# Move the file to the final destination with error handling
+if ! mv "/tmp/vault-integration-guide.md" "$docs_file" 2>/dev/null; then
+    echo -e "${RED}Failed to create $docs_file. Check permissions.${NC}"
+else
+    echo -e "${GREEN}Created integration guide:${NC} $docs_file"
+fi
 
 echo -e "\n${BLUE}==== TOKEN SINK PATHS FOR APPLICATION TEAMS ====${NC}"
 echo "It's your responsibility to communicate these token paths to application teams:"
@@ -413,6 +492,37 @@ for i in "${!APP_NAMES[@]}"; do
     echo ""
 done
 
+# Check if any token files exist yet
+echo -e "\n${BLUE}==== TOKEN FILE STATUS ====${NC}"
+found_tokens=false
+for app_name in "${APP_NAMES[@]}"; do
+    token_path="$TOKEN_SINK_DIR/${app_name}-token"
+    if [ -f "$token_path" ]; then
+        echo -e "${GREEN}✓${NC} Token for ${app_name} exists"
+        # Check permissions if possible
+        if [ -r "$token_path" ]; then
+            owner=$(stat -c '%U:%G' "$token_path" 2>/dev/null || echo "unknown:unknown")
+            perms=$(stat -c '%a' "$token_path" 2>/dev/null || echo "unknown")
+            echo "  Owner: $owner, Permissions: $perms"
+        else
+            echo "  Token exists but permission check failed (may need root access)"
+        fi
+        found_tokens=true
+    else
+        echo -e "${RED}✗${NC} Token for ${app_name} does not exist yet"
+        echo "  The Vault Agent service for this application may not be running."
+        echo "  System administrators should start the service: sudo systemctl start vault-agent-${app_name}"
+    fi
+done
+
+if [ "$found_tokens" = false ]; then
+    echo -e "\n${RED}Warning: No token files found!${NC}"
+    echo "This could be because:"
+    echo "1. The Vault Agent services haven't been started yet"
+    echo "2. The System Administrator hasn't completed setup"
+    echo "3. You don't have permission to view the token directory"
+fi
+
 echo -e "\n${GREEN}DevOps integration complete!${NC}"
 echo "Next steps:"
 echo "1. Share the sample scripts with application teams"
@@ -420,3 +530,13 @@ echo "2. Distribute the integration guide"
 echo "3. IMPORTANT: Communicate token sink paths to application teams"
 echo "4. Provide support for teams during integration"
 echo "" 
+
+# Final permissions check and suggestions
+if [ "$(id -u)" -ne 0 ] && [ "$(id -un)" != "$APPS_USER" ]; then
+    echo -e "${BLUE}===== PERMISSIONS NOTE =====${NC}"
+    echo "You ran this script as $(id -un), but the token files are owned by $APPS_USER."
+    echo "For production use, consider:"
+    echo "1. Running this script as the $APPS_USER user"
+    echo "2. Running with sudo to ensure all permissions are correctly set"
+    echo "3. Copying the generated scripts to a location where application developers can access them"
+fi 

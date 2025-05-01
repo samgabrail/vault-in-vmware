@@ -372,6 +372,9 @@ if [[ "$start_services" =~ ^[Yy] ]]; then
     echo "Waiting for tokens to be created..."
     sleep 10
 
+    # Script to monitor file and fix permissions
+    echo -e "\n${GREEN}Setting up token permission monitoring...${NC}"
+    
     # Check if tokens were created
     tokens_created=true
     for app_name in "${APP_NAMES[@]}"; do
@@ -383,11 +386,17 @@ if [[ "$start_services" =~ ^[Yy] ]]; then
         else
             echo "Token for ${app_name} created successfully."
             
-            # Fix token file permissions if needed
-            if [ "$(stat -c '%G' $token_path)" != "$APPS_USER" ]; then
-                echo "Fixing permissions on token file for $app_name"
-                chmod 440 $token_path
-                chown $VAULTAGENT_USER:$APPS_USER $token_path
+            # Fix token file permissions
+            echo "Setting correct permissions on token file for $app_name"
+            chmod 440 $token_path
+            chown $VAULTAGENT_USER:$APPS_USER $token_path
+            
+            # Verify permissions after change
+            owner_group=$(stat -c '%U:%G' $token_path)
+            if [ "$owner_group" == "$VAULTAGENT_USER:$APPS_USER" ]; then
+                echo -e "  ${GREEN}Permissions set correctly to $VAULTAGENT_USER:$APPS_USER${NC}"
+            else
+                echo -e "  ${RED}Failed to set permissions properly. Current ownership: $owner_group${NC}"
             fi
         fi
     done
@@ -402,6 +411,42 @@ else
     for app_name in "${APP_NAMES[@]}"; do
         echo "  sudo systemctl start vault-agent-${app_name}.service"
     done
+fi
+
+# Function to check and fix token permissions for existing tokens
+check_fix_token_permissions() {
+    echo -e "\n${GREEN}Verifying existing token file permissions...${NC}"
+    for app_name in "${APP_NAMES[@]}"; do
+        token_path="$TOKEN_SINK_DIR/${app_name}-token"
+        if [ -f "$token_path" ]; then
+            owner=$(stat -c '%U' "$token_path")
+            group=$(stat -c '%G' "$token_path")
+            perms=$(stat -c '%a' "$token_path")
+            
+            echo -e "Token file for ${app_name}:"
+            echo "  Path: $token_path"
+            echo "  Current ownership: $owner:$group"
+            echo "  Current permissions: $perms"
+            
+            if [ "$owner" != "$VAULTAGENT_USER" ] || [ "$group" != "$APPS_USER" ] || [ "$perms" != "440" ]; then
+                echo -e "  ${RED}Incorrect permissions detected, fixing...${NC}"
+                chown $VAULTAGENT_USER:$APPS_USER "$token_path"
+                chmod 440 "$token_path"
+                
+                # Verify again after changes
+                new_owner_group=$(stat -c '%U:%G' "$token_path")
+                new_perms=$(stat -c '%a' "$token_path")
+                echo -e "  ${GREEN}Updated to: $new_owner_group with mode $new_perms${NC}"
+            else
+                echo -e "  ${GREEN}Permissions are correct${NC}"
+            fi
+        fi
+    done
+}
+
+# Check token permissions if we didn't start services
+if [[ ! "$start_services" =~ ^[Yy] ]]; then
+    check_fix_token_permissions
 fi
 
 # Generate information for DevOps
@@ -426,6 +471,7 @@ fi
 echo "3. Created/Updated Vault Agent configurations for each application"
 echo "4. Set up systemd services for each Vault Agent"
 echo "5. Set appropriate file permissions"
+echo "6. Ensured token files have correct permissions (vaultagent:springApps with mode 440)"
 echo ""
 echo "To check the status of the services:"
 for app_name in "${APP_NAMES[@]}"; do
