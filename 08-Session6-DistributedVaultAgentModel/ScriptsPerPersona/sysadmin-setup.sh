@@ -21,6 +21,8 @@ TOKEN_SINK_DIR="/home/springApps/.vault-tokens"
 SCRIPT_PATH_FORMAT="/home/springApps/scripts/%s-script.py"
 VAULTAGENT_USER="vaultagent"
 APPS_USER="springApps"
+REFRESH_SCRIPT="$VAULT_DATA_DIR/refresh-secret-ids.sh"
+CRON_FILE="/etc/cron.d/vault-agent-renewal"
 
 # Check for root privileges
 if [ "$EUID" -ne 0 ]; then
@@ -337,6 +339,192 @@ WantedBy=multi-user.target
 EOF
 done
 
+# Create secret ID renewal script
+echo -e "\n${GREEN}Creating Secret ID renewal script...${NC}"
+# Check if the refresh script already exists
+refresh_script_exists=false
+if [ -f "$REFRESH_SCRIPT" ]; then
+    refresh_script_exists=true
+    echo "Secret ID renewal script already exists."
+    echo -e "${BLUE}What would you like to do?${NC}"
+    echo "1. Keep existing script"
+    echo "2. Update script (will preserve any custom modifications)"
+    echo "3. Recreate script (will overwrite any custom modifications)"
+    read -p "Choice [1]: " refresh_script_choice
+    refresh_script_choice=${refresh_script_choice:-1}
+else
+    # Script doesn't exist, create it
+    refresh_script_choice=3
+fi
+
+# Only create or update script if user chose options 2 or 3
+if [ "$refresh_script_choice" = "3" ]; then
+    # Full recreation of script
+    cat > "$REFRESH_SCRIPT" << 'EOF'
+#!/bin/bash
+# This script refreshes the secret IDs for all Vault Agents
+# It should be run periodically via cron before the secret IDs expire
+
+VAULT_DATA_DIR="/etc/vault-agents"
+VAULT_ADDR="PLACEHOLDER_VAULT_ADDR"
+LOG_FILE="/var/log/vault-agent-renewal.log"
+
+# Log function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+}
+
+# Ensure the log file exists and has proper permissions
+touch "$LOG_FILE"
+chmod 640 "$LOG_FILE"
+chown vaultagent:vaultagent "$LOG_FILE"
+
+log "Starting Vault Agent Secret ID renewal process"
+
+# Set Vault address
+export VAULT_ADDR
+
+# Check if restart credentials exist
+if [ ! -f "$VAULT_DATA_DIR/restart-role-id" ] || [ ! -f "$VAULT_DATA_DIR/restart-secret-id" ]; then
+    log "ERROR: Restart AppRole credentials not found"
+    exit 1
+fi
+
+# Get the restart role credentials
+RESTART_ROLE_ID=$(cat "$VAULT_DATA_DIR/restart-role-id")
+RESTART_SECRET_ID=$(cat "$VAULT_DATA_DIR/restart-secret-id")
+
+# Authenticate with restart AppRole
+log "Authenticating with restart AppRole"
+VAULT_TOKEN=$(vault write -field=token auth/approle/login role_id="$RESTART_ROLE_ID" secret_id="$RESTART_SECRET_ID")
+
+if [ -z "$VAULT_TOKEN" ]; then
+    log "ERROR: Failed to authenticate with restart role"
+    exit 1
+fi
+
+export VAULT_TOKEN
+
+# Get list of application directories
+app_dirs=$(find "$VAULT_DATA_DIR" -maxdepth 1 -type d -not -path "$VAULT_DATA_DIR" | sort)
+app_count=0
+
+for app_dir in $app_dirs; do
+    app_name=$(basename "$app_dir")
+    
+    # Skip non-application directories
+    if [[ "$app_name" == "." || "$app_name" == ".." ]]; then
+        continue
+    fi
+    
+    log "Processing application: $app_name"
+    
+    # Get the role ID first to ensure this is a valid app
+    role_id_file="$VAULT_DATA_DIR/$app_name/role-id"
+    if [ ! -f "$role_id_file" ]; then
+        log "  No role-id file found for $app_name, creating one"
+        # Get the role ID for this application
+        vault read -field=role_id "auth/approle/role/$app_name/role-id" > "$role_id_file" 2>/dev/null
+        
+        if [ $? -ne 0 ]; then
+            log "  ERROR: Failed to get role-id for $app_name, skipping"
+            continue
+        fi
+        
+        chmod 600 "$role_id_file"
+        chown vaultagent:vaultagent "$role_id_file"
+    fi
+    
+    # Generate a new wrapped secret ID
+    log "  Generating new wrapped secret ID for $app_name"
+    wrapped_secret_id_file="$VAULT_DATA_DIR/$app_name/wrapped-secret-id"
+    
+    # Write a wrapped secret-id to the expected location
+    vault write -field=wrapping_token -wrap-ttl=200s -f "auth/approle/role/$app_name/secret-id" > "$wrapped_secret_id_file" 2>/dev/null
+    
+    if [ $? -ne 0 ]; then
+        log "  ERROR: Failed to generate wrapped secret ID for $app_name"
+        continue
+    fi
+    
+    chmod 600 "$wrapped_secret_id_file"
+    chown vaultagent:vaultagent "$wrapped_secret_id_file"
+    log "  Successfully renewed secret ID for $app_name"
+    
+    app_count=$((app_count+1))
+done
+
+log "Completed Vault Agent Secret ID renewal for $app_count applications"
+EOF
+
+    # Update the Vault address in the script
+    sed -i "s|PLACEHOLDER_VAULT_ADDR|$VAULT_ADDR|g" "$REFRESH_SCRIPT"
+    if ! $refresh_script_exists; then
+        # Set permissions only if we're creating a new file
+        chmod 700 "$REFRESH_SCRIPT"
+        chown $VAULTAGENT_USER:$VAULTAGENT_USER "$REFRESH_SCRIPT"
+    fi
+    echo "Created/recreated Secret ID renewal script at $REFRESH_SCRIPT"
+
+elif [ "$refresh_script_choice" = "2" ]; then
+    # Update the Vault address in the existing script
+    sed -i "s|VAULT_ADDR=.*|VAULT_ADDR=\"$VAULT_ADDR\"|g" "$REFRESH_SCRIPT"
+    echo "Updated Vault address in existing Secret ID renewal script"
+else
+    echo "Keeping existing Secret ID renewal script"
+fi
+
+# Set up cronjob for regular renewal
+echo -e "\n${GREEN}Setting up cron job for Secret ID renewal...${NC}"
+
+# Ask how often to renew
+echo -e "${BLUE}How often should Secret IDs be renewed?${NC}"
+echo "IMPORTANT: Application Secret IDs expire after 24 hours as configured in the vault-admin-setup.sh script."
+echo "The renewal job should run more frequently than this to ensure continuous operation."
+echo "1. Every 8 hours (recommended for 24-hour TTL)"
+echo "2. Every 12 hours (also good for 24-hour TTL)"
+echo "3. Daily (cutting it close for 24-hour TTL)"
+echo "4. Custom (specify cron expression)"
+read -p "Choice [1]: " cron_choice
+cron_choice=${cron_choice:-1}
+
+case $cron_choice in
+    1)
+        cron_schedule="0 */8 * * *"  # Every 8 hours
+        cron_description="every 8 hours"
+        ;;
+    2)
+        cron_schedule="0 */12 * * *"  # Every 12 hours
+        cron_description="every 12 hours"
+        ;;
+    3)
+        cron_schedule="0 0 * * *"  # Every day at midnight
+        cron_description="daily"
+        echo -e "${RED}Warning: This is cutting it close with the 24-hour Secret ID TTL.${NC}"
+        echo "If there are any issues with the renewal job, your applications may lose access."
+        ;;
+    4)
+        read -p "Enter custom cron schedule (e.g., '0 */8 * * *' for every 8 hours): " cron_schedule
+        cron_description="custom"
+        echo "Make sure your schedule runs more frequently than the Secret ID TTL (24 hours by default)."
+        ;;
+    *)
+        cron_schedule="0 */8 * * *"  # Default to every 8 hours
+        cron_description="every 8 hours"
+        ;;
+esac
+
+# Create the cron job
+cat > "$CRON_FILE" << EOF
+# Vault Agent Secret ID renewal - runs $cron_description
+# Note: Application Secret IDs expire after 24 hours by default
+$cron_schedule root $REFRESH_SCRIPT
+EOF
+
+chmod 644 "$CRON_FILE"
+echo "Created cron job for $cron_description Secret ID renewal"
+
 echo -e "\n${GREEN}Reloading systemd and enabling services...${NC}"
 systemctl daemon-reload
 
@@ -472,6 +660,7 @@ echo "3. Created/Updated Vault Agent configurations for each application"
 echo "4. Set up systemd services for each Vault Agent"
 echo "5. Set appropriate file permissions"
 echo "6. Ensured token files have correct permissions (vaultagent:springApps with mode 440)"
+echo "7. Created Secret ID renewal script and cron job for $cron_description renewals"
 echo ""
 echo "To check the status of the services:"
 for app_name in "${APP_NAMES[@]}"; do
@@ -483,12 +672,18 @@ for app_name in "${APP_NAMES[@]}"; do
     echo "  sudo journalctl -u vault-agent-${app_name}.service"
 done
 echo ""
+echo "Secret ID renewal:"
+echo "  Script location: $REFRESH_SCRIPT"
+echo "  Cron job: $cron_description ($cron_schedule)"
+echo "  Log file: /var/log/vault-agent-renewal.log"
+echo ""
 
 # Cleanup instructions
 echo -e "\n${BLUE}To clean up when you're done (not required now):${NC}"
 echo "  sudo systemctl stop $(printf "vault-agent-%s " "${APP_NAMES[@]}")"
 echo "  sudo systemctl disable $(printf "vault-agent-%s " "${APP_NAMES[@]}")"
 echo "  sudo rm -f $(printf "/etc/systemd/system/vault-agent-%s.service " "${APP_NAMES[@]}")"
+echo "  sudo rm -f $CRON_FILE"
 echo "  sudo rm -rf $VAULT_DATA_DIR"
 echo "  sudo systemctl daemon-reload"
 echo "  sudo userdel $VAULTAGENT_USER"

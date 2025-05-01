@@ -281,7 +281,7 @@ EOF
     for app_name in "${APP_NAMES[@]}"; do
         echo "Creating/Updating AppRole for ${app_name}..."
         vault write "auth/approle/role/${app_name}" \
-            secret_id_ttl=2h \
+            secret_id_ttl=24h \
             token_num_uses=100 \
             token_ttl=5h \
             token_max_ttl=24h \

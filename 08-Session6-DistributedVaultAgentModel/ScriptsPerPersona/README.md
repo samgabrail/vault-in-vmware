@@ -29,6 +29,7 @@ Responsible for configuring the application servers:
 - Managing systemd services and file permissions
 - Securely storing the restart AppRole credentials
 - Maintaining the infrastructure supporting the applications
+- Configuring Secret ID renewal via cron jobs
 
 ### 3. Application Teams
 Responsible for consuming the provided tokens:
@@ -45,6 +46,117 @@ The implementation is split into multiple scripts:
 2. **[sysadmin-setup.sh](sysadmin-setup.sh)**: Used by System Administrators to set up Vault Agent services on application servers.
 3. **[demo-app-secret.sh](demo-app-secret.sh)**: Used to demonstrate how an application would use the token to access secrets.
 
+### Detailed Script Descriptions
+
+#### vault-admin-setup.sh
+
+This script is run by IT Security personnel who administer the Vault server. It handles:
+
+1. **Initial Vault Configuration**:
+   - Setting up policies for each application
+   - Creating application-specific AppRoles
+   - Setting up the restart AppRole (used by SysAdmins)
+   - Enabling necessary authentication methods
+
+2. **Policy Management**:
+   - Creates limited-scope policies for each application
+   - Each policy grants access only to that application's secrets
+   - Creates a special policy for the restart AppRole with minimal permissions
+
+3. **AppRole Configuration**:
+   - Creates AppRoles with specific TTLs and configurations:
+     - Secret ID TTL: 24 hours by default
+     - Token TTL: 5 hours by default
+     - Maximum token TTL: 24 hours
+     - Secret ID usage limit: 150 uses
+   - Sets up a restart AppRole with an infinite TTL for service management
+
+4. **Secrets Generation**:
+   - Creates sample secrets for each application
+   - Supports either default sample secrets or custom key-value pairs
+   - Uses Vault's KV v2 secrets engine
+
+5. **Credential Delivery**:
+   - Generates restart AppRole credentials
+   - Outputs credentials for secure transfer to System Administrators
+   - Optionally saves credentials to a JSON file for transfer
+
+**Usage**:
+- Run by Vault Administrators when setting up new applications
+- Can be run in three modes:
+  1. Set up restart AppRole only
+  2. Set up application AppRoles only
+  3. Complete setup (both)
+
+#### sysadmin-setup.sh
+
+This script is run by System Administrators who manage application servers. It handles:
+
+1. **User and Directory Setup**:
+   - Creates the `vaultagent` system user for running Vault Agents
+   - Creates the `springApps` user for running applications
+   - Sets up the necessary directory structure
+   - Configures proper file permissions
+
+2. **Vault Agent Configuration**:
+   - Creates configuration files for each application's Vault Agent
+   - Sets up token sink files for applications to read
+   - Configures Vault Agent in token-only mode (no listener)
+   - Creates startup scripts for obtaining role IDs and wrapped secret IDs
+
+3. **Systemd Integration**:
+   - Creates systemd service files for each Vault Agent
+   - Enables and configures service dependencies
+   - Sets up automatic restart capabilities
+
+4. **Secret ID Renewal**:
+   - Creates a renewal script that refreshes Secret IDs before expiration
+   - Sets up a cron job to run this script periodically
+   - Configures proper log files and error handling for the renewal process
+
+5. **Permission Management**:
+   - Sets appropriate permissions on all files
+   - Ensures token files are owned by `vaultagent:springApps` with mode 440
+   - Verifies and fixes permissions as needed
+
+**Usage**:
+- Run by System Administrators when:
+  1. Setting up a new application server
+  2. Adding new applications to an existing server
+  3. Updating configurations for existing applications
+
+**Key Features**:
+- Idempotent: Can safely be run multiple times
+- Supports adding new applications without disrupting existing ones
+- Configures automated Secret ID renewal
+- Provides detailed feedback and monitoring
+
+#### demo-app-secret.sh
+
+This script demonstrates how applications retrieve secrets using the token provided by Vault Agent. It:
+
+1. **Token Retrieval**:
+   - Locates and reads the token from the token sink file
+   - Validates that the token exists and is readable
+
+2. **Secret Access**:
+   - Makes API calls to Vault using curl
+   - Authenticates with the token
+   - Retrieves application-specific secrets
+   - Formats and displays the results
+
+3. **Error Handling**:
+   - Checks for missing tokens
+   - Handles permission issues
+   - Validates Vault server responses
+   - Provides helpful troubleshooting information
+
+**Usage**:
+- Run to verify that the tokens are working correctly
+- Serves as an example for application developers
+- Supports custom secret paths and Vault addresses
+- Can be run as root or as the `springApps` user
+
 ## Prerequisites
 
 - Linux environment (Ubuntu/Debian recommended)
@@ -54,6 +166,49 @@ The implementation is split into multiple scripts:
 - Root/sudo access (required for systemd operations)
 - A running Vault server
 
+## Secret ID Renewal Mechanism
+
+The Secret ID renewal process is a critical component of this architecture:
+
+### Why Renewal is Necessary
+- Application Secret IDs expire after 24 hours by default (configured in vault-admin-setup.sh)
+- Without renewal, Vault Agents would lose authentication capabilities
+- Renewal ensures continuous operation without manual intervention
+
+### How Renewal Works
+1. **Renewal Script**: A dedicated script in `/etc/vault-agents/refresh-secret-ids.sh`:
+   - Authenticates to Vault using the restart AppRole credentials
+   - Identifies all configured applications
+   - For each application:
+     - Verifies or retrieves the role ID
+     - Generates a new wrapped secret ID
+     - Updates permissions for secure storage
+   - Logs all activities to `/var/log/vault-agent-renewal.log`
+
+2. **Cron Job Scheduling**:
+   - The renewal cron job runs at configurable intervals:
+     - Every 8 hours (recommended for 24-hour TTL)
+     - Every 12 hours (also good for 24-hour TTL)
+     - Daily (cutting it close for 24-hour TTL)
+     - Custom schedules available for specific needs
+   - The job is stored in `/etc/cron.d/vault-agent-renewal`
+   - Runs as root with appropriate permissions
+
+3. **Idempotent Operation**:
+   - Can safely run even if the Secret IDs aren't near expiration
+   - Properly handles error conditions
+   - Maintains file permissions across renewals
+
+4. **Monitoring and Logging**:
+   - Records all actions to the renewal log
+   - Logs successes and failures for auditing
+   - Allows tracking renewal patterns and issues
+
+### Configuring Renewal Frequency
+- The renewal frequency should always be less than the Secret ID TTL
+- For the default 24-hour TTL, running every 8 hours is recommended
+- When modifying TTLs in `vault-admin-setup.sh`, ensure corresponding adjustment of the cron schedule
+
 ## Workflow for Adding a New Application
 
 ### Step 1: Vault Administrator
@@ -61,14 +216,16 @@ The implementation is split into multiple scripts:
 2. Enter the new application name when prompted
 3. Create appropriate policies for the application
 4. Set up the AppRole for the application
-5. Securely share restart AppRole credentials with System Administrators
+5. Configure appropriate TTLs for Secret IDs and tokens
+6. Securely share restart AppRole credentials with System Administrators
 
 ### Step 2: System Administrator
 1. Run the `sysadmin-setup.sh` script on the application server
 2. Enter the restart AppRole credentials provided by the Vault Administrator
 3. Specify the application name to configure
-4. Validate that Vault Agent services are running correctly
-5. Share token file paths with application teams
+4. Configure Secret ID renewal frequency based on TTL settings
+5. Validate that Vault Agent services are running correctly
+6. Share token file paths with application teams
 
 ### Step 3: Testing the Setup
 1. Use the `demo-app-secret.sh` script to verify that the token can be used to access secrets
@@ -182,6 +339,28 @@ This implementation uses Vault Agent in "token-only" mode:
 - The token is written to a file sink that the application reads
 - This approach simplifies the configuration and reduces the attack surface
 
+## Script Interactions and Dependencies
+
+The three scripts work together in sequence to create a complete management system:
+
+1. **vault-admin-setup.sh**:
+   - Creates the necessary policies and AppRoles in Vault
+   - Outputs restart AppRole credentials for SysAdmins
+   - Sets fundamental TTL configurations that affect renewal requirements
+
+2. **sysadmin-setup.sh**:
+   - Uses the restart AppRole credentials from vault-admin-setup.sh
+   - Creates Vault Agent configurations and services
+   - Sets up a Secret ID renewal system based on TTLs
+   - Outputs token file paths for application teams
+
+3. **demo-app-secret.sh**:
+   - Uses the tokens created by Vault Agents
+   - Demonstrates how applications should interact with Vault
+   - Validates that the authentication chain is working correctly
+
+This workflow ensures clear separation of duties while maintaining security throughout the process.
+
 ## Benefits of This Approach
 
 1. **Complete Isolation**: Each application only has access to its own secrets.
@@ -191,6 +370,8 @@ This implementation uses Vault Agent in "token-only" mode:
 5. **Security**: Minimal permissions for each component and secure credential delivery.
 6. **Simplified User Management**: Using a single Linux user for all applications reduces complexity while maintaining security through AppRole isolation.
 7. **Reduced Attack Surface**: By using token-only mode, we eliminate the need for a local agent API endpoint.
+8. **Automated Credential Rotation**: Secret IDs are automatically refreshed before expiration.
+9. **Idempotent Operations**: Scripts can be safely run multiple times without breaking the system.
 
 ## File Permissions and Security Considerations
 
@@ -198,6 +379,7 @@ This implementation uses Vault Agent in "token-only" mode:
 - Applications run as the `springApps` user
 - Token files are owned by `vaultagent` with group access for `springApps`
 - AppRole credentials are stored with restrictive permissions
+- Secret ID renewal operates via root cronjob with secure file access
 - Systemd services run with appropriate privileges
 
 ## Application Integration Pattern
@@ -255,10 +437,28 @@ sudo chown vaultagent:springApps /home/springApps/.vault-tokens/<application>-to
 sudo chmod 440 /home/springApps/.vault-tokens/<application>-token
 ```
 
+### Secret ID Renewal Issues
+```bash
+# Check renewal log
+sudo cat /var/log/vault-agent-renewal.log
+
+# Check cron configuration
+sudo cat /etc/cron.d/vault-agent-renewal
+
+# Run the renewal script manually to verify it works
+sudo /etc/vault-agents/refresh-secret-ids.sh
+
+# Verify permissions on the renewal script
+sudo stat -c '%a %U:%G' /etc/vault-agents/refresh-secret-ids.sh
+```
+
 ## Support and Maintenance
 
 - **Vault Administration**: Security team should regularly review and audit policies and AppRoles
-- **System Administration**: Monitor Vault Agent services and ensure they're running properly
+- **System Administration**: 
+  - Monitor Vault Agent services and ensure they're running properly
+  - Check renewal logs periodically to verify Secret ID rotation
+  - Review cron job status and ensure it's executing as expected
 - **Application Teams**: Ensure proper error handling and fallback mechanisms in applications
 
 ## Cleanup Instructions
@@ -268,10 +468,13 @@ When you need to remove an application:
 1. **Vault Administrator**:
    ```bash
    # Remove the AppRole
-   vault delete auth/approle/role/<application>-role
+   vault delete auth/approle/role/<application>
    
    # Remove the policy
-   vault policy delete <application>-policy
+   vault policy delete <application>
+   
+   # Remove the secrets
+   vault kv metadata delete secret/<application>/config
    ```
 
 2. **System Administrator**:
