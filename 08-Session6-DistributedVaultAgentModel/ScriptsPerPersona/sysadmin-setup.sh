@@ -332,7 +332,7 @@ ExecStart=$VAULT_DATA_DIR/${app_name}-agent-start.sh
 Restart=on-failure
 RestartSec=10
 User=$VAULTAGENT_USER
-Group=$VAULTAGENT_USER
+Group=$APPS_USER
 
 [Install]
 WantedBy=multi-user.target
@@ -433,7 +433,7 @@ for app_dir in $app_dirs; do
         fi
         
         chmod 600 "$role_id_file"
-        chown vaultagent:vaultagent "$role_id_file"
+        chown vaultagent:springApps "$role_id_file"
     fi
     
     # Generate a new wrapped secret ID
@@ -449,7 +449,7 @@ for app_dir in $app_dirs; do
     fi
     
     chmod 600 "$wrapped_secret_id_file"
-    chown vaultagent:vaultagent "$wrapped_secret_id_file"
+    chown vaultagent:springApps "$wrapped_secret_id_file"
     log "  Successfully renewed secret ID for $app_name"
     
     app_count=$((app_count+1))

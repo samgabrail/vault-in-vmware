@@ -38,9 +38,29 @@ if [ -z "$VAULT_ADDR" ]; then
     export VAULT_ADDR
 fi
 
+# Authenticate to Vault if not already authenticated
 if [ -z "$VAULT_TOKEN" ]; then
-    echo "Please authenticate to Vault:"
-    vault login
+    echo -e "\n${BLUE}Select authentication method:${NC}"
+    echo "1. Token"
+    echo "2. LDAP"
+    read -p "Choice [1]: " auth_method
+    auth_method=${auth_method:-1}
+    
+    case $auth_method in
+        1)
+            echo "Please authenticate to Vault with your token:"
+            vault login
+            ;;
+        2)
+            read -p "Enter LDAP username: " ldap_username
+            echo "You will be prompted for your LDAP password next (input will not be displayed)"
+            vault login -method=ldap username="$ldap_username"
+            ;;
+        *)
+            echo -e "${RED}Invalid choice. Defaulting to token authentication.${NC}"
+            vault login
+            ;;
+    esac
 fi
 
 # Verify Vault is running and we have access
