@@ -294,6 +294,9 @@ auto_auth {
       remove_secret_id_file_after_reading = true
       secret_id_response_wrapping_path = "auth/approle/role/${app_name}/secret-id"
     }
+    max_retries = 2
+    retry_backoff = "2s"
+    exit_on_err = true
   }
 
   sink "file" {
