@@ -45,6 +45,11 @@ The implementation is split into multiple scripts:
 1. **[vault-admin-setup.sh](vault-admin-setup.sh)**: Used by Vault Administrators to configure the Vault server.
 2. **[sysadmin-setup.sh](sysadmin-setup.sh)**: Used by System Administrators to set up Vault Agent services on application servers.
 3. **[demo-app-secret.sh](demo-app-secret.sh)**: Used to demonstrate how an application would use the token to access secrets.
+4. **[sysadmin-raft-snapshot.sh](sysadmin-raft-snapshot.sh)**: Used to take Vault Raft snapshots for backup and disaster recovery.
+5. **[sysadmin-setup-snapshot-cron.sh](sysadmin-setup-snapshot-cron.sh)**: Used by System Administrators to set up a cronjob for regular Raft snapshots.
+6. **[sysadmin-raft-restore.sh](sysadmin-raft-restore.sh)**: Used to restore Vault from a Raft snapshot in disaster recovery scenarios.
+7. **[vault-admin-configure-autopilot.sh](vault-admin-configure-autopilot.sh)**: Used to configure Vault's Raft autopilot for dead server cleanup.
+8. **[vault-admin-enable-audit-logs.sh](vault-admin-enable-audit-logs.sh)**: Used to enable and configure Vault audit logging.
 
 ### Detailed Script Descriptions
 
@@ -152,6 +157,140 @@ This script demonstrates how applications retrieve secrets using the token provi
 - Serves as an example for application developers
 - Supports custom secret paths and Vault addresses
 - Can be run as root or as the `springApps` user
+
+#### sysadmin-raft-snapshot.sh
+
+This script is run by IT Security personnel who administer the Vault server or via a cron job. It handles:
+
+1. **Automated Raft Snapshots**:
+   - Takes a point-in-time snapshot of the Vault Raft storage backend
+   - Creates timestamped snapshots for proper tracking
+   - Stores snapshots in a configurable location (/opt/vault/snapshots by default)
+
+2. **Retention Management**:
+   - Automatically cleans up old snapshots based on retention policy (14 days by default)
+   - Prevents snapshot storage from growing indefinitely
+   - Logs the number of snapshots being maintained
+
+3. **Robust Logging**:
+   - Records all activities in a dedicated log file
+   - Captures any errors during the snapshot process
+   - Provides an audit trail of backup activities
+
+**Usage**:
+- Run manually to create an on-demand snapshot
+- Set up with a cron job for regular automated snapshots (recommended)
+- Can be customized with different retention periods and storage locations
+
+#### sysadmin-setup-snapshot-cron.sh
+
+This script is run by System Administrators to set up automated snapshot scheduling. It handles:
+
+1. **Script Installation**:
+   - Copies the snapshot script to the appropriate system location
+   - Sets correct permissions for execution
+   - Makes it available for scheduled runs
+
+2. **Cron Configuration**:
+   - Creates a dedicated cron job for Vault snapshots
+   - Offers flexible scheduling options (hourly, daily, weekly, etc.)
+   - Uses proper system cron facilities for reliable scheduling
+
+3. **User Customization**:
+   - Allows configuration of the Vault server address
+   - Configures which user should run the snapshots
+   - Provides sensible defaults that can be overridden
+
+**Usage**:
+- Run by System Administrators to set up the snapshot schedule
+- Can be re-run to modify the snapshot frequency
+- Requires root privileges to create the cron job
+
+#### sysadmin-raft-restore.sh
+
+This script is run by Vault Administrators during disaster recovery scenarios. It handles:
+
+1. **Interactive Restoration**:
+   - Displays a list of all available snapshots with timestamps
+   - Allows selection of which snapshot to restore
+   - Provides clear warnings about the impact of restoration
+
+2. **Safe Recovery Process**:
+   - Verifies Vault is running and accessible
+   - Checks if the node is the active leader
+   - Performs the restore operation in-place without service disruption
+   - Tracks Raft Applied Index values for verification
+
+3. **Post-Restoration Verification**:
+   - Validates that the Raft Applied Index has changed
+   - Confirms Vault remains unsealed after restoration
+   - Lists all Raft peers to verify cluster state
+   - Provides guidance on next steps after restoration
+
+4. **Comprehensive Logging**:
+   - Logs all restoration steps for audit purposes
+   - Captures detailed error messages if issues occur
+   - Creates a record of which snapshot was restored
+
+**Usage**:
+- Run during disaster recovery scenarios
+- Requires a Vault token with appropriate permissions
+- Interactive process to ensure deliberate restoration choices
+- Performs restore without stopping or restarting Vault
+
+#### vault-admin-configure-autopilot.sh
+
+This script is run by Vault Administrators to configure Raft autopilot features. It handles:
+
+1. **Dead Server Cleanup**:
+   - Enables automatic cleanup of dead servers in the Raft cluster
+   - Configures the timeout threshold for detecting dead servers
+   - Sets the minimum quorum value for the cluster
+   - Eliminates manual intervention for server turnover in auto-scaling environments
+
+2. **Interactive Configuration**:
+   - Provides default values for all settings
+   - Allows customization of all autopilot parameters
+   - Explains the purpose and impact of each setting
+
+3. **Configuration Verification**:
+   - Displays the applied configuration for verification
+   - Logs all changes for audit purposes
+   - Confirms successful application of settings
+
+**Usage**:
+- Run after initial Vault cluster setup
+- Critical for environments with server auto-scaling
+- Prevents manual Raft configuration management
+- Makes cluster more resilient to server failures
+
+#### vault-admin-enable-audit-logs.sh
+
+This script is run by Vault Administrators to enable audit logging. It handles:
+
+1. **Audit Device Setup**:
+   - Configures file, syslog, or socket audit devices
+   - Creates necessary directories and sets permissions
+   - Applies proper formatting and rotation settings
+   - Ensures compliance with security requirements
+
+2. **Multiple Device Types**:
+   - File audit device for standard logging to disk
+   - Syslog audit device for integration with system logs
+   - Socket audit device for external log aggregation
+   - Customizable settings for each device type
+
+3. **Security Guidance**:
+   - Provides warnings about audit device importance
+   - Explains the impact of audit device failure
+   - Recommends monitoring and storage considerations
+   - Educates on best practices for audit log management
+
+**Usage**:
+- Run as part of initial Vault configuration
+- Essential for security compliance and forensics
+- Configure multiple devices for high availability
+- Critical for production Vault deployments
 
 ## Prerequisites
 
@@ -362,6 +501,7 @@ This workflow ensures clear separation of duties while maintaining security thro
 7. **Reduced Attack Surface**: By using token-only mode, we eliminate the need for a local agent API endpoint.
 8. **Automated Credential Rotation**: Secret IDs are automatically refreshed before expiration.
 9. **Idempotent Operations**: Scripts can be safely run multiple times without breaking the system.
+10. **Disaster Recovery Ready**: Regular automated Raft snapshots provide a robust backup mechanism for recovery scenarios.
 
 ## File Permissions and Security Considerations
 
@@ -441,7 +581,10 @@ sudo systemctl restart vault-agent-<application>
 
 ## Support and Maintenance
 
-- **Vault Administration**: Security team should regularly review and audit policies and AppRoles
+- **Vault Administration**: 
+  - Security team should regularly review and audit policies and AppRoles
+  - Monitor Raft snapshot logs to ensure backups are completing successfully
+  - Verify snapshot retention policy is appropriate for your recovery needs
 - **System Administration**: 
   - Monitor Vault Agent services and ensure they're running properly
   - Check service restart patterns to verify Secret ID renewal is working
@@ -482,3 +625,222 @@ When you need to remove an application:
    # Reload systemd
    sudo systemctl daemon-reload
    ```
+
+## Raft Snapshot Management
+
+Vault's integrated storage (Raft) requires regular snapshots for backup and disaster recovery purposes. This implementation provides a comprehensive snapshot solution:
+
+### Why Snapshots Are Essential
+- Protect against data loss in case of catastrophic failures
+- Enable point-in-time recovery capabilities
+- Support cluster expansion and migration scenarios
+- Provide offline data analysis capabilities when needed
+
+### How Snapshots Work
+1. **Automatic Scheduling**:
+   - The `sysadmin-setup-snapshot-cron.sh` script configures a cron job to run at specified intervals
+   - Frequency can be configured based on environment (hourly for production, daily for dev, etc.)
+   - The schedule can be adjusted without modifying the snapshot logic
+
+2. **Snapshot Process**:
+   - The snapshot script authenticates to Vault using a provided token
+   - Uses the `vault operator raft snapshot save` command to create consistent backups
+   - Applies proper permissions to the snapshot files for security
+   - Creates timestamped files to track exactly when each snapshot was taken
+
+3. **Retention Management**:
+   - Automatically manages storage by cleaning up snapshots based on age
+   - Default retention period is 14 days (configurable)
+   - Prevents snapshot storage from growing indefinitely
+   - Logs snapshot counts to help monitor storage usage
+
+4. **Security Considerations**:
+   - Requires a Vault token with appropriate permissions
+   - Snapshots are secured with restrictive file permissions
+   - Logs all activities for audit trail purposes
+   - Designed to run as a non-privileged user where possible
+
+### Snapshot Usage
+
+To set up automated snapshots:
+
+1. Run the `sysadmin-setup-snapshot-cron.sh` script as root:
+   ```bash
+   sudo ./sysadmin-setup-snapshot-cron.sh
+   ```
+
+2. Follow the interactive prompts to:
+   - Select snapshot frequency
+   - Specify which user should run the snapshots
+   - Configure the Vault server address
+
+To take a manual snapshot:
+
+```bash
+# Using the installed script
+sudo /usr/local/bin/sysadmin-raft-snapshot.sh
+
+# Or using the local copy directly
+sudo ./sysadmin-raft-snapshot.sh
+```
+
+### Best Practices
+
+- Take snapshots more frequently in high-change environments
+- Store snapshots in a separate physical location when possible
+- Test restoration procedures regularly using snapshots
+- Monitor snapshot logs for any failures
+- Configure appropriate alerting if snapshots fail
+
+### Snapshot Restoration
+
+In the event of a disaster recovery scenario, you can restore a Vault instance from a snapshot using the provided script:
+
+```bash
+# Run the interactive restore script
+sudo ./sysadmin-raft-restore.sh
+```
+
+The script will:
+1. List all available snapshots
+2. Allow you to select which one to restore
+3. Check if you're on the Vault leader node
+4. Record the current Raft Applied Index
+5. Restore from the selected snapshot
+6. Compare the Raft Applied Index before and after to verify success
+7. Confirm that Vault remains unsealed and operational
+
+For manual restoration process:
+
+```bash
+# First check the current Raft Applied Index
+vault status
+
+# Restore from a snapshot (no need to stop Vault)
+vault operator raft snapshot restore /opt/vault/snapshots/vault-raft-snapshot-YYYYMMDD-HHMMSS.snap
+
+# Verify the Raft Applied Index changed
+vault status
+
+# Confirm Raft peers are present
+vault operator raft list-peers
+```
+
+**Important Restoration Notes:**
+- Restoring a snapshot replaces the entire Vault data store
+- All tokens and leases created after the snapshot was taken will be invalid
+- Clients may need to re-authenticate after a restore operation
+- In a clustered environment, restore the snapshot on one node (preferably the leader) and let the cluster replicate
+
+## Raft Autopilot Configuration
+
+Vault's integrated storage (Raft) provides an autopilot feature that can automatically manage server membership, particularly useful in auto-scaling environments.
+
+### Why Autopilot is Essential
+- Eliminates manual intervention when servers come and go
+- Automatically removes dead servers from the cluster
+- Prevents cluster degradation due to unavailable nodes
+- Essential for environments with dynamic infrastructure
+
+### How Autopilot Works
+1. **Dead Server Cleanup**:
+   - When enabled, Vault automatically removes servers that have been unreachable
+   - Uses a configurable threshold to determine when a server is considered "dead"
+   - Maintains the minimum quorum to ensure cluster stability
+   - Performs cleanup without manual intervention
+
+2. **Configuration Parameters**:
+   - `cleanup-dead-servers`: Enable/disable automatic removal of dead servers
+   - `dead-server-last-contact-threshold`: Time in seconds before a server is considered dead
+   - `min-quorum`: Minimum number of servers needed for the cluster to function
+
+3. **Implementation**:
+   - The `vault-admin-configure-autopilot.sh` script provides an interactive way to set these parameters
+   - Settings are applied cluster-wide and persist across restarts
+   - Changes take effect immediately without disruption
+
+### Configuring Autopilot
+
+To configure Raft autopilot:
+
+```bash
+# Run the interactive configuration script
+./vault-admin-configure-autopilot.sh
+```
+
+For manual configuration:
+
+```bash
+# Enable dead server cleanup
+vault operator raft autopilot set-config \
+   -cleanup-dead-servers=true \
+   -dead-server-last-contact-threshold=10 \
+   -min-quorum=3
+
+# Verify current configuration
+vault operator raft autopilot get-config
+```
+
+### Best Practices
+- Always enable dead server cleanup in production environments
+- Set the contact threshold based on your network reliability (10 seconds is typical)
+- Configure min-quorum to at least (n/2)+1 where n is your total server count
+- Verify autopilot configuration after cluster changes
+
+## Audit Logging
+
+Vault audit logging is a critical component for security, compliance, and troubleshooting.
+
+### Why Audit Logging is Critical
+- Provides a complete record of all requests and responses
+- Essential for security incident investigations
+- Often required for compliance (PCI-DSS, HIPAA, etc.)
+- Helps troubleshoot authentication and authorization issues
+
+### How Audit Logging Works
+1. **Audit Devices**:
+   - Vault supports multiple types of audit devices (file, syslog, socket)
+   - Each device can be configured independently
+   - Multiple devices can be enabled simultaneously for redundancy
+   - If all audit devices fail, Vault will seal itself for security
+
+2. **Log Contents**:
+   - All requests and responses are logged (with sensitive data hashed)
+   - Authentication attempts (successful and failed)
+   - Token creation, usage, and revocation
+   - Secret access events and policy evaluations
+
+3. **Implementation**:
+   - The `vault-admin-enable-audit-logs.sh` script configures audit devices interactively
+   - File audit device writes to a specified file path
+   - Syslog device integrates with system logging
+   - Socket device sends logs to external receivers
+
+### Enabling Audit Logging
+
+To configure audit logging:
+
+```bash
+# Run the interactive setup script
+./vault-admin-enable-audit-logs.sh
+```
+
+For manual configuration:
+
+```bash
+# Enable file audit device
+vault audit enable file file_path=/var/log/vault/audit.log
+
+# Enable syslog audit device
+vault audit enable syslog tag=vault-audit facility=AUTH
+
+# List enabled audit devices
+vault audit list
+```
+
+### Best Practices
+- Enable at least two audit devices for redundancy
+- Monitor audit log storage to prevent disk space issues
+- Implement log rotation for file-based audit devices
+- Set up proper permissions on audit log files
+- Consider offloading audit logs to a SIEM system
