@@ -9,7 +9,7 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-APPS_USER="springApps"
+APPS_USER="springapps"
 TOKEN_SINK_DIR="/home/$APPS_USER/.vault-tokens"
 VAULT_ADDR="http://127.0.0.1:8200"
 

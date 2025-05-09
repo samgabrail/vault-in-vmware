@@ -17,10 +17,10 @@ VAULT_DATA_DIR="/etc/vault-agents"
 APP_DATA_DIR_FORMAT="$VAULT_DATA_DIR/%s"
 ROLE_ID_FILE_FORMAT="$VAULT_DATA_DIR/%s/role-id"
 WRAPPED_SECRET_ID_FILE_FORMAT="$VAULT_DATA_DIR/%s/wrapped-secret-id"
-TOKEN_SINK_DIR="/home/springApps/.vault-tokens"
-SCRIPT_PATH_FORMAT="/home/springApps/scripts/%s-script.py"
+TOKEN_SINK_DIR="/home/springapps/.vault-tokens"
+SCRIPT_PATH_FORMAT="/home/springapps/scripts/%s-script.py"
 VAULTAGENT_USER="vaultagent"
-APPS_USER="springApps"
+APPS_USER="springapps"
 
 # Check for root privileges
 if [ "$EUID" -ne 0 ]; then
@@ -474,7 +474,7 @@ fi
 echo "3. Created/Updated Vault Agent configurations for each application"
 echo "4. Set up systemd services for each Vault Agent"
 echo "5. Set appropriate file permissions"
-echo "6. Ensured token files have correct permissions (vaultagent:springApps with mode 440)"
+echo "6. Ensured token files have correct permissions (vaultagent:springapps with mode 440)"
 echo ""
 echo "To check the status of the services:"
 for app_name in "${APP_NAMES[@]}"; do

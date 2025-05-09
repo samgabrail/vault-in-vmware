@@ -317,7 +317,7 @@ EOF
     for app_name in "${APP_NAMES[@]}"; do
         echo -e "${GREEN}${app_name}:${NC}"
         echo "- AppRole Name: ${app_name}"
-        echo "- Token Sink Path: /home/springApps/.vault-tokens/${app_name}-token"
+        echo "- Token Sink Path: /home/springapps/.vault-tokens/${app_name}-token"
         echo ""
     done
 }
