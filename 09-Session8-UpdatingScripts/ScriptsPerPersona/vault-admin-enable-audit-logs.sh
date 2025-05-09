@@ -1,27 +1,64 @@
 #!/bin/bash
+##############################################################################
 # Vault Audit Logs Configuration Script
-# This script enables and configures Vault audit logs and monitoring
-# Should be run by the Vault Administrator
+#
+# PURPOSE:
+# This script enables and configures Vault audit logging and monitoring systems 
+# to meet security compliance requirements and provide operational visibility.
+# It supports multiple audit device types (file, syslog, socket) and sets up
+# log rotation and monitoring integration with DataDog.
+#
+# CONTEXT:
+# Audit logging is a critical component of Vault that provides comprehensive
+# records of all authenticated requests and responses. These logs are essential
+# for security monitoring, compliance auditing, and forensic analysis.
+#
+# CRITICAL CONSIDERATIONS:
+# - Vault requires at least one functional audit device to operate
+# - If all audit devices become unavailable, Vault will seal itself
+# - For production, it's recommended to enable multiple audit devices
+# - Log storage must be monitored and maintained to prevent Vault sealing
+#
+# WORKFLOW:
+# 1. Validates environment and dependencies (vault, jq, logrotate)
+# 2. Configures log files with appropriate permissions
+# 3. Sets up log rotation for audit and operational logs
+# 4. Configures systemd service for operational logging
+# 5. Provides DataDog monitoring setup instructions
+# 6. Enables the selected audit device type with custom configuration
+# 7. Verifies audit logging is functional
+#
+# PERMISSIONS REQUIRED:
+# - Root privileges (to modify system files and service configurations)
+# - Vault administrator privileges
+##############################################################################
 
+# ----------------------------------------------------------------------------
 # Configuration variables - modify as needed
+# ----------------------------------------------------------------------------
 LOG_FILE="/var/log/vault-audit-setup.log"
 AUDIT_LOG_PATH="/var/log/vault-audit.log"  # Standardized path for audit logs
 OPERATIONAL_LOG_PATH="/var/log/vault.log"  # Standardized path for operational logs
 DEFAULT_VAULT_ENV="dev"  # Default environment for DataDog tags
 
-# Colors for output
+# ANSI color codes for better terminal output readability
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
-# Log function
+# ----------------------------------------------------------------------------
+# Logging function - writes to both console and log file with timestamp
+# ----------------------------------------------------------------------------
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
     echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
+# ----------------------------------------------------------------------------
+# Environment setup and validation
+# ----------------------------------------------------------------------------
 # Ensure the log file exists and has proper permissions
 if [ ! -f "$LOG_FILE" ]; then
     touch "$LOG_FILE"
@@ -35,7 +72,7 @@ if ! command -v vault &> /dev/null; then
     exit 1
 fi
 
-# Check if jq is installed
+# Check if jq is installed - needed for JSON parsing
 if ! command -v jq &> /dev/null; then
     log "${RED}ERROR: jq is not installed. It's required for parsing Vault responses.${NC}"
     log "Installing jq..."
@@ -45,7 +82,7 @@ if ! command -v jq &> /dev/null; then
     }
 fi
 
-# Check if logrotate is installed
+# Check if logrotate is installed - needed for log management
 if ! command -v logrotate &> /dev/null; then
     log "${RED}WARNING: logrotate is not installed. It's required for log rotation.${NC}"
     log "Installing logrotate..."
@@ -55,7 +92,10 @@ if ! command -v logrotate &> /dev/null; then
     }
 fi
 
-# Ask for Vault address if not set
+# ----------------------------------------------------------------------------
+# Vault connectivity configuration
+# ----------------------------------------------------------------------------
+# Ask for Vault address if not set in environment
 if [ -z "$VAULT_ADDR" ]; then
     DEFAULT_VAULT_ADDR="http://127.0.0.1:8200"
     read -p "Enter Vault server address [$DEFAULT_VAULT_ADDR]: " input_addr
@@ -64,7 +104,9 @@ fi
 export VAULT_ADDR
 log "Using Vault address: $VAULT_ADDR"
 
-# Authenticate to Vault if not already authenticated
+# ----------------------------------------------------------------------------
+# Authentication to Vault - multiple methods supported
+# ----------------------------------------------------------------------------
 if [ -z "$VAULT_TOKEN" ]; then
     echo -e "\n${BLUE}Select authentication method:${NC}"
     echo "1. Token (direct entry)"
@@ -75,10 +117,12 @@ if [ -z "$VAULT_TOKEN" ]; then
     
     case $auth_method in
         1)
+            # Direct token entry - prompts user to enter token
             echo "Please authenticate to Vault with your token:"
             vault login
             ;;
         2)
+            # Read token from file - useful for automation
             read -p "Enter path to token file [/etc/vault/vault-token]: " token_file
             token_file=${token_file:-"/etc/vault/vault-token"}
             
@@ -99,6 +143,7 @@ if [ -z "$VAULT_TOKEN" ]; then
             fi
             ;;
         3)
+            # LDAP authentication - requires LDAP auth method to be enabled
             read -p "Enter LDAP username: " ldap_username
             echo "You will be prompted for your LDAP password next (input will not be displayed)"
             if ! vault login -method=ldap username="$ldap_username"; then
@@ -107,13 +152,16 @@ if [ -z "$VAULT_TOKEN" ]; then
             fi
             ;;
         *)
+            # Default fallback for invalid entries
             log "${RED}Invalid choice. Defaulting to token authentication.${NC}"
             vault login
             ;;
     esac
 fi
 
-# Verify Vault is running and we have access
+# ----------------------------------------------------------------------------
+# Vault server connectivity verification
+# ----------------------------------------------------------------------------
 log "Verifying Vault server is accessible..."
 if ! vault status &> /dev/null; then
     log "${RED}ERROR: Vault server is not running or not accessible at $VAULT_ADDR.${NC}"
@@ -121,7 +169,9 @@ if ! vault status &> /dev/null; then
 fi
 log "${GREEN}Vault server is accessible.${NC}"
 
-# Interactive configuration
+# ----------------------------------------------------------------------------
+# Script introduction and guidance
+# ----------------------------------------------------------------------------
 echo -e "\n${BLUE}=== Vault Audit Logs Configuration ===${NC}"
 echo "This script will enable Vault audit logging and monitoring."
 echo "Audit logs are critical for security and compliance."
@@ -131,7 +181,9 @@ echo "If all audit devices become unavailable, Vault will seal itself."
 echo "For production, it's recommended to enable multiple audit devices."
 echo ""
 
-# Set up log files and permissions
+# ----------------------------------------------------------------------------
+# Log file configuration and permission setup
+# ----------------------------------------------------------------------------
 echo -e "\n${BLUE}Setting up log files...${NC}"
 log "Creating audit log file at $AUDIT_LOG_PATH"
 touch "$AUDIT_LOG_PATH"
@@ -151,7 +203,9 @@ if getent group vault > /dev/null 2>&1; then
     log "Set ownership of operational log file to vault:vault"
 fi
 
-# Configure logrotate for audit logs
+# ----------------------------------------------------------------------------
+# Log rotation configuration
+# ----------------------------------------------------------------------------
 echo -e "\n${BLUE}Configuring logrotate for Vault logs...${NC}"
 cat > /etc/logrotate.d/vault-audit.log << EOF
 $AUDIT_LOG_PATH {
@@ -192,7 +246,9 @@ $OPERATIONAL_LOG_PATH {
 EOF
 log "Created logrotate configuration for operational logs"
 
-# Modify systemd service file to redirect output to operational log
+# ----------------------------------------------------------------------------
+# Systemd service configuration for operational logging
+# ----------------------------------------------------------------------------
 if [ -f "/lib/systemd/system/vault.service" ]; then
     echo -e "\n${BLUE}Updating Vault service to log operations...${NC}"
     
@@ -225,7 +281,9 @@ else
     log "${YELLOW}WARNING: Vault systemd service file not found. Skipping operational logging setup.${NC}"
 fi
 
-# DataDog monitoring setup placeholder
+# ----------------------------------------------------------------------------
+# DataDog monitoring integration instructions
+# ----------------------------------------------------------------------------
 echo -e "\n${BLUE}DataDog monitoring configuration${NC}"
 echo "To enable DataDog monitoring, please follow these steps:"
 echo "1. Install the DataDog agent:"
@@ -264,7 +322,9 @@ echo ""
 echo "5. Restart the DataDog agent:"
 echo "   systemctl restart datadog-agent"
 
-# Select audit device type
+# ----------------------------------------------------------------------------
+# Audit device selection and configuration
+# ----------------------------------------------------------------------------
 echo -e "\n${BLUE}Select the audit device type:${NC}"
 echo "1. File audit device (recommended)"
 echo "2. Syslog audit device"
@@ -295,7 +355,9 @@ esac
 log "Configuring $device_description..."
 
 if [ "$device_type" == "file" ]; then
+    # ----------------------------------------------------------------------------
     # File audit device configuration
+    # ----------------------------------------------------------------------------
     echo -e "${BLUE}File Audit Device Configuration:${NC}"
     read -p "Use standard audit log path? ($AUDIT_LOG_PATH) [Y/n]: " use_standard_path
     if [[ "$use_standard_path" =~ ^[Nn]$ ]]; then
@@ -328,7 +390,9 @@ if [ "$device_type" == "file" ]; then
     fi
     
 elif [ "$device_type" == "syslog" ]; then
+    # ----------------------------------------------------------------------------
     # Syslog audit device configuration
+    # ----------------------------------------------------------------------------
     echo -e "${BLUE}Syslog Audit Device Configuration:${NC}"
     read -p "Syslog tag [vault-audit]: " syslog_tag
     syslog_tag=${syslog_tag:-vault-audit}
@@ -346,7 +410,9 @@ elif [ "$device_type" == "syslog" ]; then
     fi
     
 elif [ "$device_type" == "socket" ]; then
+    # ----------------------------------------------------------------------------
     # Socket audit device configuration
+    # ----------------------------------------------------------------------------
     echo -e "${BLUE}Socket Audit Device Configuration:${NC}"
     read -p "Socket address [127.0.0.1:9090]: " socket_address
     socket_address=${socket_address:-127.0.0.1:9090}
@@ -364,6 +430,9 @@ elif [ "$device_type" == "socket" ]; then
     fi
 fi
 
+# ----------------------------------------------------------------------------
+# Verification and summary
+# ----------------------------------------------------------------------------
 # List enabled audit devices
 log "Listing enabled audit devices..."
 echo -e "\n${BLUE}Enabled Audit Devices:${NC}"
