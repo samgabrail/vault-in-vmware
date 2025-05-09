@@ -388,6 +388,8 @@ EOF
             token_ttl=5h \
             token_max_ttl=24h \
             secret_id_num_uses=150 \
+            token_bound_cidrs="127.0.0.1/32, 127.0.0.2/32" \
+            secret_id_bound_cidrs="127.0.0.1/32, 127.0.0.2/32" \
             token_policies="${app_name}"
         echo "Created/Updated ${app_name} AppRole"
     done
