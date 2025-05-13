@@ -12,6 +12,46 @@ In this architecture, each application has its own dedicated Vault Agent that:
 
 This model provides strong isolation between applications while maintaining a simplified user management approach, focusing on secure token delivery rather than proxying Vault API calls.
 
+```mermaid
+sequenceDiagram
+    participant VA as Vault Admin (IT Security)
+    participant VAS as vault-admin-setup.sh
+    participant SA as System Admin 
+    participant SAS as sysadmin-setup.sh
+    participant AppTeam as Application Team
+    participant DAS as demo-app-secret.sh
+    participant VS as Vault Server
+    participant FS as File System
+    
+    note over VA,AppTeam: Step 1: Vault Administrator
+    VA->>VAS: Execute script to add new application
+    VAS->>VS: Create policy for new application
+    VAS->>VS: Create AppRole for application
+    VAS->>VS: Configure appropriate TTLs & permissions
+    VAS->>VS: Create initial secrets
+    VAS-->>VA: Provide app information for System Admin
+    
+    note over VA,AppTeam: Step 2: System Administrator
+    VA->>SA: Securely transfer restart AppRole credentials
+    SA->>SAS: Execute script with restart credentials
+    SAS->>SAS: Configure application directory structure
+    SAS->>FS: Create agent startup script for application
+    SAS->>FS: Create agent configuration file 
+    SAS->>FS: Create systemd service
+    SAS->>FS: Start service to create initial token
+    SAS-->>SA: Provide token file path information
+    
+    note over VA,AppTeam: Step 3: Application Team
+    SA->>AppTeam: Share token file path
+    AppTeam->>DAS: Test access with demo script
+    DAS->>FS: Read token from file
+    DAS->>VS: Access application secret using token
+    VS-->>DAS: Return requested secret
+    DAS-->>AppTeam: Display secret data
+    
+    AppTeam->>AppTeam: Integrate token access in application code
+```
+
 ## Responsibility Model
 
 The implementation follows a clear separation of responsibilities across three key personas:
