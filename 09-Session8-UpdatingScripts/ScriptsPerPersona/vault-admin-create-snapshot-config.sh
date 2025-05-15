@@ -36,12 +36,13 @@ NC='\033[0m' # No Color
 # ----------------------------------------------------------------------------
 echo -e "\n${BLUE}=== Vault Raft Snapshot Policy and AppRole Setup ===${NC}"
 
-# Check if VAULT_ADDR is set
+# Export Vault Address if not already set in environment
 if [ -z "$VAULT_ADDR" ]; then
-    echo -e "${RED}Error: VAULT_ADDR environment variable is not set.${NC}"
-    echo "Please set the VAULT_ADDR environment variable to your Vault server address."
-    echo "Example: export VAULT_ADDR=http://127.0.0.1:8200"
-    exit 1
+    echo -e "${YELLOW}VAULT_ADDR environment variable is not set.${NC}"
+    read -p "Enter Vault server address [http://127.0.0.1:8200]: " input_addr
+    VAULT_ADDR=${input_addr:-http://127.0.0.1:8200}
+    export VAULT_ADDR
+    echo "Using Vault server: $VAULT_ADDR"
 fi
 
 # Authentication to Vault
