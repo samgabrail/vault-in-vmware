@@ -152,6 +152,7 @@ if ! vault write auth/approle/role/$ROLE_NAME \
     policies=$POLICY_NAME \
     token_ttl=1h \
     token_max_ttl=24h \
+    #placeholder for cidr blocks
     secret_id_ttl=0; then
     echo -e "${RED}Error: Failed to create AppRole.${NC}"
     exit 1
