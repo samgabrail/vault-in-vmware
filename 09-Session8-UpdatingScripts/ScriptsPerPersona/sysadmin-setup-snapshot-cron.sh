@@ -111,7 +111,7 @@ esac
 # ----------------------------------------------------------------------------
 # User configuration - determine which user will run the cron job
 # ----------------------------------------------------------------------------
-echo -e "\n${BLUE}Which user should run the snapshot script?${NC}"
+echo -e "\n${BLUE}Which user on this system should run the snapshot script?${NC}"
 echo "The user needs permissions to run Vault commands and access the VAULT_TOKEN."
 echo "Common choices: root, vault, or a dedicated backup user with proper permissions."
 read -p "User [root]: " cron_user
