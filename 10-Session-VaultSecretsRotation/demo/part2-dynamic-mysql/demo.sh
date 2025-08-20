@@ -130,12 +130,12 @@ echo
 # Wait for TTL expiration
 echo "⏰ Waiting for TTL Expiration:"
 echo "=============================="
-echo "   ⏱️  Dynamic credentials expire in 10 seconds..."
+echo "   ⏱️  Dynamic credentials expire in 10 seconds, waiting 15 seconds to ensure cleanup..."
 echo "   🕐 Current time: $(date)"
 echo
 
 # Count down
-for i in {10..1}; do
+for i in {15..1}; do
     printf "\r   ⏳ Waiting for expiration... %2d seconds remaining" $i
     sleep 1
 done

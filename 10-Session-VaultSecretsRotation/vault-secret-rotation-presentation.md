@@ -18,7 +18,7 @@
 - **Live Demo**
 - **Q&A**
 
-> 30 minutes of presentation, 10 minutes demo, 20 minutes Q&A
+> 32 minutes of presentation, 8 minutes demo, 20 minutes Q&A
 
 ---
 
@@ -186,7 +186,7 @@ vault read -field password sys/policies/password/my-policy/generate
 
 ## Demo Scenario Overview
 
-### What We'll Demonstrate (10 minutes)
+### What We'll Demonstrate (8 minutes)
 
 **Part 1: Static MySQL Secret Rotation**
 - Vault-generated password using policies
@@ -199,10 +199,5 @@ vault read -field password sys/policies/password/my-policy/generate
 - Automatic cleanup after TTL expiration
 - Direct comparison with static approach
 - Perfect forward secrecy demonstration
-
-**Part 3: Monitoring & Audit**
-- Comprehensive audit logging for both approaches
-- Real-time monitoring and alerting
-- Compliance reporting capabilities
 
 > Live demo environment: Vault Dev Server + MySQL Container (same database for both parts)

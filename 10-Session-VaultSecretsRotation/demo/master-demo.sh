@@ -106,14 +106,6 @@ setup_part2() {
     print_success "Part 2 setup complete!"
 }
 
-# Function to setup Part 3
-setup_part3() {
-    print_header "Setting Up Part 3: Monitoring & Audit"
-    cd part3-monitoring-audit
-    ./setup.sh
-    cd ..
-    print_success "Part 3 setup complete!"
-}
 
 # Function to run part 1 demo
 run_part1() {
@@ -155,24 +147,6 @@ run_part2() {
     cd ..
 }
 
-# Function to run part 3 demo
-run_part3() {
-    setup_part3
-    wait_for_input
-    
-    print_header "Part 3: Monitoring & Audit"
-    echo "This demonstrates:"
-    echo "• Comprehensive audit logging"
-    echo "• Real-time monitoring capabilities"
-    echo "• Alert simulation and compliance"
-    echo "• Complete operational visibility"
-    
-    wait_for_input
-    
-    cd part3-monitoring-audit
-    ./demo.sh
-    cd ..
-}
 
 # Function to show demo summary
 show_summary() {
@@ -191,12 +165,6 @@ show_summary() {
     echo "   ✅ Automatic cleanup and no credential sprawl"
     echo "   ✅ Perfect forward secrecy"
     echo "   ✅ No rotation needed (ephemeral by design)"
-    
-    echo
-    echo "3. Monitoring & Audit:"
-    echo "   ✅ Complete audit trail of all operations"
-    echo "   ✅ Real-time monitoring and alerting"
-    echo "   ✅ Compliance reporting capabilities"
     
     echo -e "\n${BLUE}🔄 The Clear Winner: Dynamic Secrets${NC}"
     echo "Static Rotation (Part 1):"
@@ -272,18 +240,13 @@ show_menu() {
     echo "   • Automatic cleanup after TTL expiration"
     echo "   • The modern approach that eliminates rotation"
     echo
-    echo "3. Part 3: Monitoring & Audit"
-    echo "   • Comprehensive audit logging"
-    echo "   • Real-time monitoring capabilities"
-    echo "   • Complete operational visibility"
-    echo
-    echo "4. Demo Summary & Key Takeaways"
+    echo "3. Demo Summary & Key Takeaways"
     echo "   • Complete comparison and recommendations"
     echo
-    echo "5. Cleanup Demo Environment"
+    echo "4. Cleanup Demo Environment"
     echo "   • Stop containers and remove temporary files"
     echo
-    echo "6. Exit"
+    echo "5. Exit"
     echo
 }
 
@@ -294,7 +257,7 @@ main() {
     
     while true; do
         show_menu
-        echo -n -e "${YELLOW}Select an option (1-6): ${NC}"
+        echo -n -e "${YELLOW}Select an option (1-5): ${NC}"
         read choice
         
         case $choice in
@@ -309,27 +272,22 @@ main() {
                 read -p "Press Enter to return to main menu..."
                 ;;
             3)
-                run_part3
-                echo
-                read -p "Press Enter to return to main menu..."
-                ;;
-            4)
                 show_summary
                 echo
                 read -p "Press Enter to return to main menu..."
                 ;;
-            5)
+            4)
                 cleanup_demo
                 echo
                 read -p "Press Enter to return to main menu..."
                 ;;
-            6)
+            5)
                 echo
                 print_success "Thank you for using the Vault Secret Rotation demo!"
                 exit 0
                 ;;
             *)
-                echo -e "${RED}Invalid option. Please select 1-6.${NC}"
+                echo -e "${RED}Invalid option. Please select 1-5.${NC}"
                 sleep 2
                 ;;
         esac
@@ -345,10 +303,6 @@ case "${1:-}" in
     "part2")
         check_prerequisites
         run_part2
-        ;;
-    "part3")
-        check_prerequisites
-        run_part3
         ;;
     "summary")
         show_summary

@@ -1,17 +1,15 @@
 # HashiCorp Vault Secret Rotation Demo
 
-This demo accompanies the "Vault for Secret Rotation" presentation and demonstrates three key aspects of secret management with HashiCorp Vault using the **same MySQL database** to show the clear contrast between approaches:
+This demo accompanies the "Vault for Secret Rotation" presentation and demonstrates two key approaches to secret management with HashiCorp Vault using the **same MySQL database** to show the clear contrast between approaches:
 
 1. **Static MySQL Secret Rotation** - Traditional rotation with Vault-generated passwords
-2. **Dynamic MySQL Credentials** - Just-in-time credential generation (no rotation needed)  
-3. **Monitoring & Audit** - Complete audit trails and compliance reporting
+2. **Dynamic MySQL Credentials** - Just-in-time credential generation (no rotation needed)
 
 ## 🎯 Demo Flow & Purpose
 
 The demo is designed to show a **direct comparison** using the same MySQL database:
 - **Part 1** demonstrates the traditional approach of rotating static database passwords
-- **Part 2** shows how dynamic secrets eliminate rotation entirely  
-- **Part 3** provides visibility into both approaches through monitoring
+- **Part 2** shows how dynamic secrets eliminate rotation entirely
 
 This progression clearly illustrates why dynamic secrets represent the evolution beyond traditional rotation.
 
@@ -84,12 +82,9 @@ demo/
 │   ├── mysql-setup.sh               # Start MySQL container (shared with Part 2)
 │   ├── rotate-mysql-password.sh     # Complete MySQL rotation workflow
 │   └── demo.sh                      # Orchestrate static rotation demonstration
-├── part2-dynamic-mysql/             # Dynamic MySQL credentials demo
-│   ├── setup.sh                     # Configure database secrets engine
-│   └── demo.sh                      # Demonstrate dynamic credential generation
-└── part3-monitoring-audit/          # Monitoring and audit demo
-    ├── setup.sh                     # Enable audit logging
-    └── demo.sh                      # Demonstrate monitoring capabilities
+└── part2-dynamic-mysql/             # Dynamic MySQL credentials demo
+    ├── setup.sh                     # Configure database secrets engine
+    └── demo.sh                      # Demonstrate dynamic credential generation
 ```
 
 ## Individual Demo Parts
@@ -183,10 +178,8 @@ cd part2-dynamic-mysql
 ./demo.sh             # Run complete demonstration with comparison
 ```
 
-**Dynamic Roles Created:**
-- `dynamic-app` (3m TTL) - Full CRUD operations
-- `dynamic-readonly` (1m TTL) - Read-only access  
-- `cleanup-service` (30s TTL) - Maintenance tasks
+**Dynamic Role Created:**
+- `dynamic-app` (10s TTL) - Full CRUD operations for quick demo
 
 **Key Commands:**
 ```bash
@@ -194,7 +187,6 @@ cd part2-dynamic-mysql
 vault read database/creds/dynamic-app
 
 # Each request creates a new MySQL user like: v-token-dynamic-a-xyz123
-vault read database/creds/dynamic-readonly
 ```
 
 **Direct Comparison:**
@@ -202,45 +194,12 @@ The demo shows the same MySQL database with:
 - Static user: `app-service-user` (permanent, needs rotation)
 - Dynamic users: `v-token-*` (temporary, auto-expire)
 
-### Part 3: Monitoring & Audit
-
-**What it demonstrates:**
-- Comprehensive audit logging for both static and dynamic operations
-- Real-time monitoring dashboards
-- Alert condition simulation  
-- Compliance reporting for both approaches
-
-**Setup:**
-```bash
-cd part3-monitoring-audit
-./setup.sh            # Enable audit logging and create monitoring tools
-./demo.sh             # Run monitoring demonstration
-```
-
-**Monitoring Tools Created:**
-```bash
-# Real-time monitoring dashboard
-./monitor-vault.sh
-
-# Detailed audit log analysis
-./analyze-audit.sh
-
-# Alert condition simulation
-./simulate-alerts.sh
-```
-
 ## Running Individual Components
-
-### Setup Only
-```bash
-./master-demo.sh setup
-```
 
 ### Run Specific Parts
 ```bash
 ./master-demo.sh part1    # Static MySQL rotation only
 ./master-demo.sh part2    # Dynamic MySQL credentials only
-./master-demo.sh part3    # Monitoring only
 ```
 
 ### Cleanup
@@ -273,9 +232,8 @@ cd part3-monitoring-audit
 1. **Start with a pilot** - Choose low-risk, high-value application
 2. **Dynamic for new apps** - Build with Vault integration from start  
 3. **Static rotation for legacy** - Gradual improvement of existing systems
-4. **Monitor everything** - Enable audit logging from day one
-5. **Expand gradually** - Learn and iterate across organization
-6. **Migrate when possible** - Move from static to dynamic over time
+4. **Expand gradually** - Learn and iterate across organization
+5. **Migrate when possible** - Move from static to dynamic over time
 
 ### The Clear Winner
 
@@ -320,16 +278,6 @@ find . -name "*.sh" -exec chmod +x {} \;
 ```
 
 ### Logs and Debugging
-
-**Audit logs:**
-```bash
-# View real-time audit events
-tail -f demo/part3-monitoring-audit/audit-logs/vault-audit.log | jq
-
-# Analyze specific operations
-jq 'select(.request.path | startswith("database/"))' audit-logs/vault-audit.log
-jq 'select(.request.path | startswith("static-secrets/"))' audit-logs/vault-audit.log
-```
 
 **MySQL user inspection:**
 ```bash
