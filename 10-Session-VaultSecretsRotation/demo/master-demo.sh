@@ -33,8 +33,8 @@ print_error() {
 # Function to wait for user input
 wait_for_input() {
     echo
-    read -p "Press Enter to continue to $1..."
-    clear
+    read -p "Press Enter to continue..."
+    echo
 }
 
 # Function to check prerequisites
@@ -87,34 +87,39 @@ check_prerequisites() {
     vault status
 }
 
-# Function to run demo setup
-run_setup() {
-    print_header "Setting Up Demo Environment"
-    
-    # Part 1: Static MySQL rotation
-    print_success "Setting up Part 1: Static MySQL Secret Rotation"
+# Function to setup Part 1
+setup_part1() {
+    print_header "Setting Up Part 1: Static MySQL Secret Rotation"
     cd part1-static-mysql
     ./mysql-setup.sh
     ./setup.sh
     cd ..
-    
-    # Part 2: Dynamic MySQL secrets  
-    print_success "Setting up Part 2: Dynamic MySQL Credentials"
+    print_success "Part 1 setup complete!"
+}
+
+# Function to setup Part 2
+setup_part2() {
+    print_header "Setting Up Part 2: Dynamic MySQL Credentials"
     cd part2-dynamic-mysql
     ./setup.sh
     cd ..
-    
-    # Part 3: Monitoring & Audit
-    print_success "Setting up Part 3: Monitoring & Audit"
+    print_success "Part 2 setup complete!"
+}
+
+# Function to setup Part 3
+setup_part3() {
+    print_header "Setting Up Part 3: Monitoring & Audit"
     cd part3-monitoring-audit
     ./setup.sh
     cd ..
-    
-    print_success "Demo environment setup complete!"
+    print_success "Part 3 setup complete!"
 }
 
 # Function to run part 1 demo
 run_part1() {
+    setup_part1
+    wait_for_input
+    
     print_header "Part 1: Static MySQL Secret Rotation"
     echo "This demonstrates:"
     echo "• Vault-generated passwords using policies"
@@ -123,6 +128,8 @@ run_part1() {
     echo "• Version history and rollback capabilities"
     echo "• The traditional approach to secret rotation"
     
+    wait_for_input
+    
     cd part1-static-mysql
     ./demo.sh
     cd ..
@@ -130,6 +137,9 @@ run_part1() {
 
 # Function to run part 2 demo
 run_part2() {
+    setup_part2
+    wait_for_input
+    
     print_header "Part 2: Dynamic MySQL Credentials"
     echo "This demonstrates:"
     echo "• On-demand credential generation" 
@@ -138,6 +148,8 @@ run_part2() {
     echo "• Perfect forward secrecy"
     echo "• The modern approach that eliminates rotation"
     
+    wait_for_input
+    
     cd part2-dynamic-mysql
     ./demo.sh
     cd ..
@@ -145,12 +157,17 @@ run_part2() {
 
 # Function to run part 3 demo
 run_part3() {
+    setup_part3
+    wait_for_input
+    
     print_header "Part 3: Monitoring & Audit"
     echo "This demonstrates:"
     echo "• Comprehensive audit logging"
     echo "• Real-time monitoring capabilities"
     echo "• Alert simulation and compliance"
     echo "• Complete operational visibility"
+    
+    wait_for_input
     
     cd part3-monitoring-audit
     ./demo.sh
@@ -233,67 +250,108 @@ cleanup_demo() {
     print_success "Demo cleanup complete!"
 }
 
-# Main demo flow
-main() {
+# Function to show main menu
+show_menu() {
     clear
     echo -e "${BLUE}"
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "║             HashiCorp Vault Secret Rotation Demo            ║"
     echo "║                                                              ║"
-    echo "║  Part 1: Static MySQL Secret Rotation                       ║"
-    echo "║  Part 2: Dynamic MySQL Credentials                          ║"  
-    echo "║  Part 3: Monitoring & Audit                                 ║"
-    echo "║                                                              ║"
     echo "║  🎯 Compare static rotation vs dynamic secrets              ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}\n"
     
-    # Check prerequisites
+    echo -e "${GREEN}Available Demo Parts:${NC}"
+    echo "1. Part 1: Static MySQL Secret Rotation"
+    echo "   • Vault-generated passwords using policies"
+    echo "   • Manual MySQL password rotation workflow"
+    echo "   • The traditional approach to secret rotation"
+    echo
+    echo "2. Part 2: Dynamic MySQL Credentials"
+    echo "   • On-demand credential generation"
+    echo "   • Automatic cleanup after TTL expiration"
+    echo "   • The modern approach that eliminates rotation"
+    echo
+    echo "3. Part 3: Monitoring & Audit"
+    echo "   • Comprehensive audit logging"
+    echo "   • Real-time monitoring capabilities"
+    echo "   • Complete operational visibility"
+    echo
+    echo "4. Demo Summary & Key Takeaways"
+    echo "   • Complete comparison and recommendations"
+    echo
+    echo "5. Cleanup Demo Environment"
+    echo "   • Stop containers and remove temporary files"
+    echo
+    echo "6. Exit"
+    echo
+}
+
+# Main interactive menu
+main() {
+    # Check prerequisites once at startup
     check_prerequisites
-    wait_for_input "demo setup"
     
-    # Run setup
-    run_setup
-    wait_for_input "Part 1 (Static MySQL Rotation)"
-    
-    # Run demos
-    run_part1
-    wait_for_input "Part 2 (Dynamic MySQL Credentials)"
-    
-    run_part2
-    wait_for_input "Part 3 (Monitoring & Audit)"
-    
-    run_part3
-    wait_for_input "demo summary"
-    
-    # Show summary
-    show_summary
-    
-    # Ask about cleanup
-    echo
-    read -p "Would you like to clean up the demo environment? (y/N): " cleanup
-    if [[ $cleanup =~ ^[Yy]$ ]]; then
-        cleanup_demo
-    fi
-    
-    echo
-    print_success "Thank you for attending the Vault Secret Rotation demo!"
+    while true; do
+        show_menu
+        echo -n -e "${YELLOW}Select an option (1-6): ${NC}"
+        read choice
+        
+        case $choice in
+            1)
+                run_part1
+                echo
+                read -p "Press Enter to return to main menu..."
+                ;;
+            2)
+                run_part2
+                echo
+                read -p "Press Enter to return to main menu..."
+                ;;
+            3)
+                run_part3
+                echo
+                read -p "Press Enter to return to main menu..."
+                ;;
+            4)
+                show_summary
+                echo
+                read -p "Press Enter to return to main menu..."
+                ;;
+            5)
+                cleanup_demo
+                echo
+                read -p "Press Enter to return to main menu..."
+                ;;
+            6)
+                echo
+                print_success "Thank you for using the Vault Secret Rotation demo!"
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}Invalid option. Please select 1-6.${NC}"
+                sleep 2
+                ;;
+        esac
+    done
 }
 
 # Handle script arguments
 case "${1:-}" in
-    "setup")
-        check_prerequisites
-        run_setup
-        ;;
     "part1")
+        check_prerequisites
         run_part1
         ;;
     "part2")
+        check_prerequisites
         run_part2
         ;;
     "part3")
+        check_prerequisites
         run_part3
+        ;;
+    "summary")
+        show_summary
         ;;
     "cleanup")
         cleanup_demo

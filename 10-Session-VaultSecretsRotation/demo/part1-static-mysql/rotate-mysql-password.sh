@@ -103,6 +103,16 @@ else
 fi
 echo
 
+echo "🎯 KEY DEMONSTRATION POINT:"
+echo "   Applications can now retrieve the newly rotated credential from Vault!"
+echo "   This shows the complete static rotation workflow in action."
+echo
+echo "💡 The application doesn't need to know the password was rotated -"
+echo "   it always pulls the current credential from Vault."
+echo
+read -p "Press Enter to see the remaining verification steps..."
+echo
+
 # Step 6: Test application connection using retrieved credentials
 echo "🚀 Step 6: Testing application connection with retrieved credentials..."
 echo "   💻 Simulating application database connection..."
@@ -125,13 +135,8 @@ else
 fi
 echo
 
-# Step 7: Show version history
-echo "📚 Step 7: Checking version history for rollback capability..."
-vault kv metadata get $VAULT_PATH | grep -A 10 "Versions:"
-echo
-
-# Demonstrate old password no longer works
-echo "🔒 Step 8: Verifying old password is deactivated..."
+# Step 7: Verify old password is deactivated
+echo "🔒 Step 7: Verifying old password is deactivated..."
 if docker exec vault-mysql-demo mysql -u $SERVICE_USER -pinitial-static-password demo -e "SELECT 'Old password works' as Status;" >/dev/null 2>&1; then
     echo "   ⚠️  Old password still works (this is expected on first rotation)"
 else
@@ -148,8 +153,7 @@ echo "   3. ✅ Application configuration updated"
 echo "   4. ✅ New credential stored in Vault with metadata"
 echo "   5. ✅ Applications can retrieve updated credential"
 echo "   6. ✅ Connection verified with rotated password"
-echo "   7. ✅ Version history maintained for rollback"
-echo "   8. ✅ Old password deactivated"
+echo "   7. ✅ Old password deactivated"
 echo
 echo "🔄 This demonstrates static rotation where:"
 echo "   • User controls when rotation happens"

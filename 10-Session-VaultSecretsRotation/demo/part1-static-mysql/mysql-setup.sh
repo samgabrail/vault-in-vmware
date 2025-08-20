@@ -17,13 +17,13 @@ fi
 # Stop existing container if running
 if docker ps -q -f name=vault-mysql-demo >/dev/null 2>&1; then
     echo "🛑 Stopping existing MySQL container..."
-    docker stop vault-mysql-demo >/dev/null
+    docker stop vault-mysql-demo >/dev/null 2>&1 || true
 fi
 
 # Remove existing container if exists
 if docker ps -aq -f name=vault-mysql-demo >/dev/null 2>&1; then
     echo "🗑️  Removing existing MySQL container..."
-    docker rm vault-mysql-demo >/dev/null
+    docker rm vault-mysql-demo >/dev/null 2>&1 || true
 fi
 
 # Start MySQL container

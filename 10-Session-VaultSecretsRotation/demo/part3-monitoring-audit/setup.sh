@@ -23,7 +23,12 @@ mkdir -p ./audit-logs
 
 # Enable file audit backend
 echo "📋 Enabling file audit backend..."
-vault audit enable file file_path=./audit-logs/vault-audit.log 2>/dev/null || echo "   (already enabled)"
+# Create the audit log file with proper permissions
+touch ./audit-logs/vault-audit.log
+chmod 644 ./audit-logs/vault-audit.log
+# Use absolute path for audit backend
+AUDIT_PATH=$(realpath ./audit-logs/vault-audit.log)
+vault audit enable file file_path="$AUDIT_PATH" 2>/dev/null || echo "   (already enabled)"
 
 # Enable syslog audit backend (if available)
 echo "📋 Attempting to enable syslog audit backend..."
