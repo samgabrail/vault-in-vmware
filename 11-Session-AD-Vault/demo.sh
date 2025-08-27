@@ -178,55 +178,6 @@ main() {
     echo "- Vault prevents credential conflicts automatically"
 }
 
-# Test authentication for a single checkout
-test_single_checkout() {
-    echo ""
-    echo "Testing LDAP Authentication with Check-Out"
-    echo "==========================================="
-    echo ""
-    
-    # Check out an account
-    echo "Checking out service account from database-admins library..."
-    local response=$(vault write -format=json -force ldap/library/database-admins/check-out 2>&1)
-    
-    if echo "$response" | jq -e '.data' > /dev/null 2>&1; then
-        local username=$(echo "$response" | jq -r '.data.service_account_name')
-        local password=$(echo "$response" | jq -r '.data.password')
-        
-        echo -e "${GREEN}✓ Checked out:${NC} $username"
-        echo -e "${YELLOW}  Password:${NC} ${password:0:20}... (truncated)"
-        echo ""
-        
-        echo "Testing LDAP authentication..."
-        local auth_result=$(docker exec demo-openldap ldapwhoami -x \
-            -H "ldap://localhost" \
-            -D "cn=$username,ou=serviceAccounts,dc=demo,dc=local" \
-            -w "$password" 2>&1)
-        
-        if echo "$auth_result" | grep -q "dn:cn=$username"; then
-            echo -e "${GREEN}✓ LDAP AUTH SUCCESS!${NC}"
-            echo "  Authenticated as: cn=$username,ou=serviceAccounts,dc=demo,dc=local"
-            echo ""
-            echo "Performing LDAP search with authenticated user..."
-            docker exec demo-openldap ldapsearch -x \
-                -H "ldap://localhost" \
-                -D "cn=$username,ou=serviceAccounts,dc=demo,dc=local" \
-                -w "$password" \
-                -b "dc=demo,dc=local" \
-                -s base "(objectclass=*)" dn 2>&1 | head -10
-        else
-            echo -e "${RED}✗ LDAP AUTH FAILED${NC}"
-            echo "  Error: $auth_result"
-        fi
-        
-        echo ""
-        echo "Checking account back in..."
-        vault write ldap/library/database-admins/check-in service_account_names="$username"
-        echo -e "${GREEN}✓ Account checked back in${NC}"
-    else
-        echo -e "${RED}Failed to check out account${NC}"
-    fi
-}
 
 # Parse arguments
 case "${1:-}" in
@@ -234,12 +185,8 @@ case "${1:-}" in
         export VAULT_ADDR VAULT_TOKEN
         show_ldap_library_status
         ;;
-    "auth-test")
-        export VAULT_ADDR VAULT_TOKEN
-        test_single_checkout
-        ;;
     "-h"|"--help")
-        echo "Usage: $0 [status|auth-test]"
+        echo "Usage: $0 [status]"
         echo ""
         echo "This demo uses Vault's LDAP secrets engine"
         echo "with multiple role-based libraries:"
@@ -249,7 +196,6 @@ case "${1:-}" in
         echo "Commands:"
         echo "  (no args)  - Start the multi-library demo"
         echo "  status     - Check all LDAP library statuses"
-        echo "  auth-test  - Test LDAP authentication with checked-out account"
         echo ""
         echo "Make sure you've run ./setup.sh first!"
         ;;

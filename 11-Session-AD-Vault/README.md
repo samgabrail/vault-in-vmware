@@ -47,40 +47,97 @@ docker-compose up -d
 
 The demo demonstrates the complete lifecycle:
 
-**1. Check-Out Service Account:**
+**1. Database Service Account Check-Outs:**
 ```
-╔════════════════════════════════════════════════════════╗
-║         LDAP SERVICE ACCOUNT CHECKED OUT         ║
-╠════════════════════════════════════════════════════════╣
-║ Username: svc-dba-01
-║ Password: [rotated password from LDAP]
-║ Lease ID: ldap/library/dba-library/check-out/xyz...
-║ Node:     db-app-1
-║ Engine:   LDAP Secrets Engine
-╚════════════════════════════════════════════════════════╝
+Command: vault write -force ldap/library/database-admins/check-out
+Key                     Value
+---                     -----
+lease_id                ldap/library/database-admins/check-out/uVQJsu4U7dp0SY0loPAVKne0
+lease_duration          3600
+lease_renewable         null
+password                VgIUOxM9tjycAYcAxfgIIuJNi4MHApewWgtQHs7lKxqLw7sDugV80jqX1WMsqvO9
+service_account_name    svc-dba-01
+
+Command: vault write -force ldap/library/database-admins/check-out
+Key                     Value
+---                     -----
+lease_id                ldap/library/database-admins/check-out/IpQnbipLKq8QOkwc2LyYcPqj
+lease_duration          1h
+lease_renewable         true
+password                T3hyzEJDAWqnJmnTtvlU9IwuVGA4Zmpm4DnDXDvOs5qxpHrGS6gOSVDAIlW2oAvd
+service_account_name    svc-dba-02
 ```
 
-**2. Authenticate to LDAP:**
+**2. Web Service Account Check-Outs:**
 ```
-✓ LDAP AUTH SUCCESS: Authenticated as svc-dba-01 with rotated password
-  Performing LDAP operations with authenticated account...
+Command: vault write -force ldap/library/web-admins/check-out
+Key                     Value
+---                     -----
+lease_id                ldap/library/web-admins/check-out/MUx2yafQZwgPvVAIYC7SZ01D
+lease_duration          1h
+lease_renewable         true
+password                zfWcuTHAau4tpv7N5Kl6NcgTZMMDu49nj1AibzdjJ4p3elEYdHzSZdOvhTosyggL
+service_account_name    svc-web-01
+
+Command: vault write -force ldap/library/web-admins/check-out
+Key                     Value
+---                     -----
+lease_id                ldap/library/web-admins/check-out/OaQCEKg8rpmGWoc8cMhbj0fY
+lease_duration          1h
+lease_renewable         true
+password                ZTxw8jTrumj9MiJLV3xQf5vgw44vuB89187BnK2LZfRRAaXRCuMNDhjSWI6TXZAH
+service_account_name    svc-web-02
 ```
 
-**3. Work with Account:**
+**3. LDAP Authentication Test:**
 ```
-[db-app-1] Working with database-node account: svc-dba-01 (authenticated to LDAP)
+Testing authentication for svc-dba-01...
+✓ LDAP AUTH SUCCESS: svc-dba-01 authenticated successfully with checked out password
 ```
 
-**4. Check-In Account:**
+**4. Library Status - Accounts Checked Out:**
 ```
-╔════════════════════════════════════════════════════════╗
-║          LDAP SERVICE ACCOUNT CHECKED IN         ║
-╠════════════════════════════════════════════════════════╣
-║ Username: svc-dba-01
-║ Status:   AVAILABLE IN LIBRARY
-║ Password: ROTATED BY VAULT
-║ Engine:   LDAP Secrets Engine
-╚════════════════════════════════════════════════════════╝
+Database Admins Library Status:
+  🔒 svc-dba-01: Checked out
+  🔒 svc-dba-02: Checked out
+  ✅ svc-dba-03: Available
+  ✅ svc-dba-04: Available
+  ✅ svc-dba-05: Available
+  ✅ svc-dba-06: Available
+
+Web Admins Library Status:
+  🔒 svc-web-01: Checked out
+  🔒 svc-web-02: Checked out
+  ✅ svc-web-03: Available
+```
+
+**5. Check-In with Password Rotation:**
+```
+Command: vault write ldap/library/database-admins/check-in service_account_names="svc-dba-01,svc-dba-02"
+Key          Value
+---          -----
+check_ins    [svc-dba-01 svc-dba-02]
+
+Command: vault write ldap/library/web-admins/check-in service_account_names="svc-web-01,svc-web-02"
+Key          Value
+---          -----
+check_ins    [svc-web-01 svc-web-02]
+```
+
+**6. Final Status - All Accounts Available:**
+```
+Database Admins Library Status:
+  ✅ svc-dba-01: Available
+  ✅ svc-dba-02: Available
+  ✅ svc-dba-03: Available
+  ✅ svc-dba-04: Available
+  ✅ svc-dba-05: Available
+  ✅ svc-dba-06: Available
+
+Web Admins Library Status:
+  ✅ svc-web-01: Available
+  ✅ svc-web-02: Available
+  ✅ svc-web-03: Available
 ```
 
 ## Vault Commands Used
@@ -121,20 +178,9 @@ vault write ldap/library/dba-library/check-in \
 
 ## Commands
 
-- `./demo.sh` - Run the 3-node demonstration using LDAP with authentication testing
+- `./demo.sh` - Run the demonstration using LDAP with authentication testing
 - `./demo.sh status` - Check LDAP library status
-- `./demo.sh auth-test` - Test LDAP authentication with a checked-out account
 - `./cleanup.sh` - Clean everything up
-
-### Authentication Test Feature
-
-The `auth-test` command demonstrates:
-1. **Check-out** a service account from Vault
-2. **Authenticate** to LDAP using the rotated password
-3. **Perform** LDAP search operations with the account
-4. **Check-in** the account back to the library
-
-This proves the rotated passwords work for actual LDAP authentication!
 
 ### Manual LDAP Authentication Testing
 
@@ -239,9 +285,8 @@ vault write -force ldap/library/web-admins/check-out       # Gets web account
 
 The demo includes full LDAP authentication testing:
 
-**Authentication Methods Used:**
+**Authentication Method Used:**
 - `ldapwhoami` - Verifies the account can authenticate
-- `ldapsearch` - Shows the account can perform LDAP operations
 
 **Complete Lifecycle Demonstrated:**
 1. Vault checks out service account (existing password)
