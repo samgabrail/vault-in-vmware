@@ -37,3 +37,9 @@ override.tf.json
 terraform.rc
 mysql-configs
 audit-logs
+
+# Demo logs and temporary files
+11-Session-AD-Vault/logs/
+11-Session-AD-Vault/*.log
+11-Session-AD-Vault/*-vault-tokens.env
+11-Session-AD-Vault/node*.log

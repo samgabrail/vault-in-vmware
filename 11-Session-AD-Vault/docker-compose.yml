@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  openldap:
+    image: osixia/openldap:latest
+    container_name: demo-openldap
+    environment:
+      - LDAP_ORGANISATION=Demo Corp
+      - LDAP_DOMAIN=demo.local
+      - LDAP_ADMIN_PASSWORD=admin123
+      - LDAP_CONFIG_PASSWORD=config123
+      - LDAP_READONLY_USER=false
+      - LDAP_RFC2307BIS_SCHEMA=false
+      - LDAP_BACKEND=mdb
+      - LDAP_TLS=true
+      - LDAP_TLS_CRT_FILENAME=ldap.crt
+      - LDAP_TLS_KEY_FILENAME=ldap.key
+      - LDAP_TLS_DH_PARAM_FILENAME=dhparam.pem
+      - LDAP_TLS_CA_CRT_FILENAME=ca.crt
+      - LDAP_TLS_ENFORCE=false
+      - LDAP_TLS_CIPHER_SUITE=SECURE256:-VERS-SSL3.0
+      - LDAP_TLS_VERIFY_CLIENT=demand
+      - KEEPALIVED=0
+      - LDAP_REMOVE_CONFIG_AFTER_SETUP=true
+      - LDAP_SSL_HELPER_PREFIX=ldap
+    ports:
+      - "389:389"
+      - "636:636"
+    volumes:
+      - ldap_data:/var/lib/ldap
+      - ldap_config:/etc/ldap/slapd.d
+    networks:
+      - vault-demo
+    healthcheck:
+      test: ["CMD", "ldapsearch", "-x", "-H", "ldap://localhost", "-b", "dc=demo,dc=local", "-D", "cn=admin,dc=demo,dc=local", "-w", "admin123"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  vault:
+    image: hashicorp/vault:latest
+    container_name: demo-vault
+    cap_add:
+      - IPC_LOCK
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=root-token
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+      - VAULT_API_ADDR=http://0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    networks:
+      - vault-demo
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      openldap:
+        condition: service_healthy
+
+  phpldapadmin:
+    image: osixia/phpldapadmin:latest
+    container_name: demo-phpldapadmin
+    environment:
+      - PHPLDAPADMIN_LDAP_HOSTS=openldap
+      - PHPLDAPADMIN_HTTPS=false
+    ports:
+      - "8080:80"
+    networks:
+      - vault-demo
+    depends_on:
+      - openldap
+
+volumes:
+  ldap_data:
+  ldap_config:
+
+networks:
+  vault-demo:
+    driver: bridge
